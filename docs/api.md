@@ -134,3 +134,74 @@ curl -s -o /dev/null -w '%{http_code}\n' $API/api/students -H "authorization: Be
 |---|---|---|
 | GET | `/api/retakes?year` · POST `/api/retakes/generate` `{ year }` | admin · summer semester, offerings, resit enrolments and resit exams |
 | GET | `/api/assistant/status` · POST `/api/assistant/chat` `{ messages[] }` | tools run through this API with the caller's token; returns `reply` and `actions` |
+
+## Users, roles and capabilities (admin)
+
+```
+GET    /api/admin/actions              catalogue of the 27 capabilities, grouped, with the role defaults
+GET    /api/admin/users?q&role&active  accounts with their effective capability list
+POST   /api/admin/users                create an account (role, name, email, password, optional student link)
+PATCH  /api/admin/users/:id            rename, change role, activate/deactivate
+POST   /api/admin/users/:id/permissions  {grant:[], revoke:[]} — stored only where it differs from the role default
+POST   /api/admin/users/:id/reset-password
+DELETE /api/admin/users/:id            soft delete
+```
+
+Every route is guarded by a capability, not a role name: `allow('users.manage')`. Overrides are merged in
+`can(role, action, {grant, revoke})` — revoke wins over grant, grant wins over the role default — and cached for
+10 seconds, so a change shows up in `/auth/me` almost immediately. The API refuses to remove the last active admin,
+to demote the caller, or to grant a capability that does not exist.
+
+```bash
+# give a lecturer the right to publish, then take it away
+curl -X POST .../api/admin/users/$ID/permissions -H "authorization: Bearer $ADMIN" \
+     -H 'content-type: application/json' -d '{"grant":["marksheet.publish"]}'
+```
+
+## Timetable editing
+
+```
+GET  /api/timetable/periods?semesterId       the period grid for that group (final-year groups get the early grid)
+GET  /api/timetable/health?semesterId        {dayEndsBy, slots, gaps[], lateFinalYear[], clashes}
+GET  /api/timetable/slots/:id/alternatives   ranked free periods for that class
+PATCH /api/timetable/slots/:id               move a class (dayOfWeek, startTime, endTime, venueId)
+```
+
+A move that collides answers **409** with the machine-readable detail the UI needs:
+
+```json
+{ "message": "That slot is taken", "clashes": [ { "kind": "VENUE", "label": "LB-201 has CS4001 section B" } ],
+  "kinds": ["VENUE"],
+  "alternatives": [ { "dayOfWeek": 1, "startTime": "08:00", "endTime": "09:30", "venueId": "…", "label": "Mon 08:00–09:30 LB-201" } ] }
+```
+
+Two curriculum rules are enforced on the same path as clashes, so generation, drag-and-drop and manual edits cannot
+disagree: a final-year group (semester ≥ 5) must finish by **10:00**, and no group may be left with a gap longer than
+**120 minutes** between classes on a day.
+
+## Class lists
+
+```
+GET /api/offerings/:id/class-list       students grouped by section, with weekly classes and the latest result
+GET /api/offerings/:id/class-list.csv   the same, as a download
+```
+
+## Room layouts
+
+`POST /api/venues` and `PATCH /api/venues/:id` accept `isClassroom` and a `layout`:
+
+```json
+{ "layout": { "cells": { "0:0": "DESK", "0:1": "AISLE", "3:4": "OFF", "0:5": "TEACHER" },
+              "labelMode": "ROW_COL", "note": "back two rows removed for the projector" } }
+```
+
+`OFF` cells are mirrored into `disabledSeats`, so capacity and the seating engine always match the drawing.
+
+## Leave-reason quality
+
+```
+POST /api/requests/check-reason   {"text":"…"} → {verdict, score, notes[], category, checkedBy}
+```
+
+`verdict` is `OK`, `WEAK` or `GIBBERISH`. Creating a request with a `GIBBERISH` reason is refused with **400** and the
+full report in `details.reasonCheck`; `WEAK` is accepted but stored and shown to whoever decides the request.

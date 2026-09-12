@@ -30,6 +30,18 @@ Have `docs/sample-marks-CS4003.csv` ready. Phone signed in as `student1@demo` on
 | admin@demo | Retakes → Generate summer retakes | "Everyone with an outstanding resit gets a summer offering and a resit exam." |
 | any | Assistant (Ctrl+K): "Cancel section A's Programming class tomorrow, room repairs" | "The model acts through the same API with my permissions; the change shows in the audit log." |
 
+## Extended demo (v3, +3 minutes)
+
+| Who | Do | Say |
+|---|---|---|
+| admin@demo | Timetable → BSc Computing Sep 2026 → drag a class onto an occupied period | "It doesn't just refuse. It tells me *who* clashes — the teacher, the section or the room — and offers free periods that already satisfy every rule. One click and the class moves, everyone in the section is notified." |
+| admin@demo | Switch to the third-year group → point at the header | "Final year finishes by 10:00, because those students are out on internships. And nobody gets a gap over two hours. The banner is green; if I break either rule by hand it turns red and names the class." |
+| admin@demo | Modules → any module → Class list → Print | "Every module has its class list: section, student ID, name, weekly classes with room and teacher, latest result. CSV or paper — that is what departments ask for on day one." |
+| admin@demo | Rooms → New → draw the layout | "Instead of typing 6 by 8 minus these seats, you draw the room: desks, aisles, the broken corner, where the teacher stands. The capacity follows the drawing and the seating engine plans against the real room." |
+| student1@demo | Requests → New absence → type `hfiudewhfie` | "Rejected, with the reason why. Type a real one and it goes through. It's rules, not a model, so it works with the Wi-Fi down and it can explain itself." |
+| admin@demo | Users → lecturer@demo → tick *Publish results* | "Roles are the starting point, not the ceiling. 27 capabilities, each switchable per person. Watch — the lecturer's Publish button appears within ten seconds. Untick it and it's gone. The server decides, not the menu." |
+| student1@demo | My results → admit card panel at the top | "The student's own page leads with the admit card: paid, issued, every exam with venue and seat." |
+
 ## Judge Q&A — answer by showing
 
 1. **Can a lecturer change a published mark?** No. Open the published sheet: grid read-only, no submit action. Then `curl -X PUT …/marks` → 409 "Marks can only be edited while the sheet is DRAFT". Even a raw `UPDATE "Mark"` fails: trigger `mark_published_immutable`. Corrections = *Request correction* (reason) → new version → students notified "result updated".
@@ -39,9 +51,9 @@ Have `docs/sample-marks-CS4003.csv` ready. Phone signed in as `student1@demo` on
 5. **Same-module students sitting together?** Colour-coded grid; `seating.test.ts` covers unequal cohorts, disabled seats, multi-venue, special needs. When a module is bigger than half a venue the clashes are counted and outlined in red — reported, not hidden.
 6. **Capacity insufficient?** The engine returns an explicit unseated list; the page shows a red banner naming them. Test: "returns an explicit unseated list when capacity is insufficient".
 7. **How does RTE migrate Excel?** Download the template per sheet (one row per enrolled student), fill, import; headers matched case/punctuation-insensitively; `ABS` for absent; re-import idempotent. Column mapping UI is in the backlog.
-8. **Where's the AI?** Honest answer: explainable statistical flags (uniformity, identical marks, cohort mean shift, deviation from the student's own average). No LLM in the product. The handbook says innovation does not require AI; our innovation is the validated, auditable pipeline.
+8. **Where's the AI?** Three honest layers. (a) Explainable statistics — uniformity, identical marks, cohort mean shift, deviation from the student's own average — advisory, never blocking, never edits a mark. (b) Deterministic engines that people usually assume are AI: grading, seating, timetable generation with clash, finish-by-10:00 and two-hour-gap rules, exam scheduling. (c) An optional LLM assistant that acts **through this API with the signed-in user's own token**, so RBAC, validation, audit and notifications apply unchanged — turn the key off and everything except the chat box still works. The leave-reason check is deliberately *not* a model: it is rules, so it works offline and can explain itself.
 9. **Is the app a webview?** Native Flutter: secure-storage tokens, offline cache with "last synced", Riverpod, custom-painted seat grid, approval actions. Turn Wi-Fi off and reopen it.
-10. **Life after the hackathon?** `docker compose up`, `npm run db:reset`, CI on every push (migrate, seed, typecheck, 49 tests, build), health endpoints, `docs/ops.md` runbook, Prisma migrations with DB-level rules. Grading scheme and standing rule are configurable and labelled as assumptions.
+10. **Life after the hackathon?** `docker compose up`, `npm run db:reset`, CI on every push (migrate, seed, typecheck, 82 tests, build), health endpoints, `docs/ops.md` runbook, Prisma migrations with DB-level rules. Grading scheme and standing rule are configurable and labelled as assumptions.
 
 ## Backup plan
 

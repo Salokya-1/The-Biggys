@@ -204,3 +204,53 @@ For an academic year, the latest published outcome per student × offering that 
 
 ### AI assistant
 `routes/assistant.ts` runs an OpenAI-style tool loop against OpenRouter (primary model + fallbacks, retries on 429/5xx). Every tool is an HTTP call into this same Fastify app via `app.inject`, carrying the caller's bearer token — so the assistant has exactly the user's permissions, every action passes the same Zod validation, RBAC, optimistic locks, audit and notifications, and a 403 simply comes back to the model. Large tool outputs are shaped to the essentials. The system prompt requires confirmation before irreversible or replacing actions unless the user asked for that exact action. Tool calls are written to the audit log as `assistant.actions`.
+
+## v3 — capabilities, timetable rules, class lists, room drawings, reason checks
+
+### Capabilities instead of role checks
+
+`backend/src/lib/actions.ts` is a single list of 27 actions (`student.read`, `marksheet.publish`, `timetable.write`,
+`users.manage`, …), each with a label, a group and the roles that hold it by default. Everything reads from that list:
+the route guards (`allow('marksheet.publish')`), the admin UI's checkbox board, the web navigation, and `/auth/me`.
+
+A user row may carry `permissions: {grant: [], revoke: []}`. The decision is pure:
+
+```
+can(role, action, overrides) =
+  overrides.revoke.includes(action) ? false
+: overrides.grant.includes(action)  ? true
+: roleDefault(role, action)
+```
+
+Only the difference from the role default is stored, so changing a role's defaults later moves everyone who was never
+customised. The resolved set is cached per user for 10 seconds and dropped immediately on write
+(`invalidatePermissions(userId)`), which keeps the hot path off the database without making an admin wait.
+
+### Timetable as intervals
+
+The generator and the editor share one model: a `Booking` is a half-open interval on a weekday, and three indexes
+(teacher, section, venue) answer "is this free?" in constant time. Two curriculum constraints sit beside the clash
+check, so they cannot be bypassed by editing rather than generating:
+
+- **Final year finishes by 10:00.** Semester ≥ 5 uses `EARLY_PERIODS` — three 60-minute blocks from 07:00 — because
+  those students do internships and project work in the day.
+- **No gap longer than two hours.** `findGapViolations` walks each day's sorted intervals; the generator backs off in
+  three passes (`distinctDays + gap` → `gap` → neither) rather than failing outright, and reports what it relaxed.
+
+`suggestSlots` powers the "generate another slot" affordance: when a drop collides it returns the highest-ranked free
+periods for the same teacher, section and room, already filtered by both rules, so the alert offers a fix instead of
+just a complaint.
+
+### Reason quality without a model
+
+`checkReason` is deterministic and offline: vowel ratio, longest consonant run, repeated-character runs, keyboard-row
+sequences, a ~250-word dictionary hit rate, and six category keywords (medical, family, travel, work, academic,
+technical). The category bonus only applies once there are at least four alphabetic words, so "personal work" cannot
+buy a pass. It returns a verdict, a score and human-readable notes, and the notes are what the approver sees — the
+system explains its judgement rather than silently dropping a request.
+
+### Rooms are drawn, not described
+
+A venue's `layout` is a sparse map of `"row:col" → DESK | AISLE | OFF | TEACHER`. `disabledFromLayout()` derives
+`disabledSeats` from it on every write, which means the existing seating engine needed no change: it already respected
+disabled seats. Drawing a room is therefore a UI over data the engine already understood.
