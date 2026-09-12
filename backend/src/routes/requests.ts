@@ -77,6 +77,16 @@ export async function requestRoutes(app: FastifyInstance) {
     await audit(prisma, { ...actorOf(req), action: 'request.create', entityType: 'ChangeRequest', entityId: r.id, after: body });
     const title = body.kind === 'TEACHER_ABSENCE' ? `Teacher absence: ${r.slot?.moduleOffering.module.code} on ${body.date}` : body.kind === 'STUDENT_ABSENCE' ? `Student absence request from ${u.name}` : `Section change request from ${u.name}`;
     await notifyRole(prisma, 'ADMIN', { type: 'request.created', title, body: body.reason, payload: { requestId: r.id } });
+    // A student's absence is the teacher's business too: they mark the register and can accept it
+    // without waiting for RTE, so they are told at the same time.
+    if (body.kind === 'STUDENT_ABSENCE' && r.slot?.teacher?.id) {
+      await notifyUsers(prisma, [r.slot.teacher.id], {
+        type: 'request.created',
+        title: `Absence request for your ${r.slot.moduleOffering.module.code} class`,
+        body: `${u.name} on ${body.date}: ${body.reason}`,
+        payload: { requestId: r.id },
+      });
+    }
     if (body.kind === 'TEACHER_ABSENCE' && r.slot) {
       const leader = r.slot.moduleOffering.module;
       if (leader?.moduleLeaderId) await notifyUsers(prisma, [leader.moduleLeaderId], { type: 'request.created', title, body: body.reason, payload: { requestId: r.id } });
@@ -103,11 +113,15 @@ export async function requestRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/requests/:id/decide', { preHandler: [requireRole('ADMIN', 'MODULE_LEADER')] }, async (req) => {
+  app.post('/requests/:id/decide', { preHandler: [requireRole('ADMIN', 'MODULE_LEADER', 'LECTURER')] }, async (req) => {
     const { id } = parse(idParam, req.params);
     const body = parse(decideBody, req.body);
     const r = await prisma.changeRequest.findUnique({ where: { id }, include: { ...include, requester: { select: { id: true, name: true, role: true, student: { select: { id: true, studentId: true, sectionId: true, section: { select: { name: true } } } } } } } });
     if (!r) throw notFound('Request not found');
+    // A lecturer may only decide an absence from their own class; everything else is RTE's.
+    if (req.user!.role === 'LECTURER' && !(r.kind === 'STUDENT_ABSENCE' && r.slot?.teacher?.id === req.user!.id)) {
+      throw forbidden('You can only decide absences from your own classes');
+    }
     if (r.status !== 'PENDING') throw conflict(`Request already ${r.status}`);
 
     await prisma.$transaction(async (tx) => {

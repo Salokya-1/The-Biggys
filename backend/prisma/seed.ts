@@ -64,7 +64,7 @@ async function main() {
 
   // ---------- users ----------
   const mkUser = (email: string, name: string, role: Role) => prisma.user.create({ data: { email, name, role, passwordHash } });
-  const admin = await mkUser('admin@demo', 'Anita Shrestha', 'ADMIN');
+  const admin = await mkUser('admin@demo', 'Sita Tandon', 'ADMIN');
   const leaderCS = await mkUser('leader@demo', 'Bikash Rai', 'MODULE_LEADER');
   const leaderCS2 = await mkUser('leader2@demo', 'Prakash Adhikari', 'MODULE_LEADER');
   const leaderBM = await mkUser('leader3@demo', 'Sarita Joshi', 'MODULE_LEADER');
@@ -120,8 +120,18 @@ async function main() {
   'Ms. Shresha Rajbhandari', 'Ms. Somia Dahal', 'Ms. Supriya Tamrakar', 'Ms. Vedika Thapa',
   ];
   const FACULTY_SIZE = FACULTY_NAMES.length;
-  const faculty = FACULTY_NAMES.map((name, i) => ({ id: randomUUID(), name, email: `teacher${i + 1}@demo` }));
-  await prisma.user.createMany({ data: faculty.map((f) => ({ id: f.id, email: f.email, name: f.name, role: 'LECTURER' as Role, passwordHash })) });
+  // The demo staff sit at the front of the pool, so signing in as lecturer@demo or leader@demo
+  // shows a real teaching week rather than an empty timetable.
+  const faculty = [
+    ...lecturers.map((l) => ({ id: l.id, name: l.name, email: l.email })),
+    { id: leaderCS.id, name: leaderCS.name, email: leaderCS.email },
+    { id: leaderCS2.id, name: leaderCS2.name, email: leaderCS2.email },
+    { id: leaderBM.id, name: leaderBM.name, email: leaderBM.email },
+    ...FACULTY_NAMES.map((name, i) => ({ id: randomUUID(), name, email: `teacher${i + 1}@demo` })),
+  ];
+  // Only the invented ones need creating; the demo accounts already exist.
+  const existing = new Set([...lecturers.map((l) => l.id), leaderCS.id, leaderCS2.id, leaderBM.id]);
+  await prisma.user.createMany({ data: faculty.filter((f) => !existing.has(f.id)).map((f) => ({ id: f.id, email: f.email, name: f.name, role: 'LECTURER' as Role, passwordHash })) });
   /** Everyone who can be put in front of a class. */
   const teachingStaff = [...lecturers.map((l) => ({ id: l.id, name: l.name })), ...faculty.map((f) => ({ id: f.id, name: f.name }))];
 

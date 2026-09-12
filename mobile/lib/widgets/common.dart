@@ -81,10 +81,13 @@ class Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = color ?? Theme.of(context).colorScheme.secondaryContainer;
+    // The pill colours are fixed pastels, so the label has to be chosen from the fill rather than
+    // inherited: in dark mode the inherited colour is near-white and vanished into the pill.
+    final fg = ThemeData.estimateBrightnessForColor(c) == Brightness.dark ? Colors.white : Colors.black87;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(999)),
-      child: Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg)),
     );
   }
 }

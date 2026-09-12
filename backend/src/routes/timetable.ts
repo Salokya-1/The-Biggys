@@ -311,7 +311,9 @@ export async function timetableRoutes(app: FastifyInstance) {
     const scope = await scopeFor(req, {});
     const today = new Date();
     const thisWeek = slotDate(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())), 1, 7);
-    const filter = u.role === 'STUDENT' ? scope : { teacherId: u.id };
+    // A student sees their group's routine and a teacher their own classes. An admin teaches
+    // nothing, so "my week" for them is everything running that week.
+    const filter = u.role === 'STUDENT' ? scope : u.role === 'ADMIN' ? {} : { teacherId: u.id };
     const build = async (start: Date) =>
       Promise.all(Array.from({ length: 7 }, (_, i) => new Date(start.getTime() + i * 86400e3)).map(async (d) => ({ date: dayIso(d), items: await buildDay(d, filter) })));
 
