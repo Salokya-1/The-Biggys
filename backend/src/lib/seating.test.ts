@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capacityOf, generateSeating, seatLabel, type SeatStudent, type SeatVenue } from './seating';
+import { capacityOf, generateOrderedSeating, generateSeating, seatLabel, type SeatStudent, type SeatVenue } from './seating';
 
 const venue = (over: Partial<SeatVenue> = {}): SeatVenue => ({
   id: 'v1',
@@ -102,5 +102,28 @@ describe('generateSeating', () => {
     const c = generateSeating([venue()], students, 43);
     expect(a).toEqual(b);
     expect(a.allocations.map((x) => x.studentId).join()).not.toBe(c.allocations.map((x) => x.studentId).join());
+  });
+});
+
+describe('generateOrderedSeating (class tests, by section then ID)', () => {
+  it('seats students in ascending ID order, section by section, room by room', () => {
+    const v1 = venue({ id: 'r1', name: 'LB-101', rows: 2, cols: 3 });
+    const v2 = venue({ id: 'r2', name: 'LB-102', rows: 2, cols: 3 });
+    const students = [
+      ...cohort('m1', 'CS', 4).map((s) => ({ ...s, sectionName: 'B' })),
+      ...cohort('m2', 'BM', 5).map((s) => ({ ...s, sectionName: 'A' })),
+    ];
+    const r = generateOrderedSeating([v2, v1], students);
+    expect(r.unseated).toHaveLength(0);
+    const labels = r.allocations.map((a) => `${a.venueId}:${a.seatLabel}`);
+    // section A (BM000..BM004) fills LB-101 A1..A3, B1..B2; section B continues B3 then LB-102
+    expect(labels.slice(0, 6)).toEqual(['r1:A1', 'r1:A2', 'r1:A3', 'r1:B1', 'r1:B2', 'r1:B3']);
+    const ids = r.allocations.map((a) => students.find((s) => s.studentId === a.studentId)!.label);
+    expect(ids.slice(0, 5)).toEqual(['BM000', 'BM001', 'BM002', 'BM003', 'BM004']);
+  });
+  it('lists the overflow when rooms run out', () => {
+    const r = generateOrderedSeating([venue({ rows: 1, cols: 2 })], cohort('m1', 'CS', 5));
+    expect(r.allocations).toHaveLength(2);
+    expect(r.unseated).toHaveLength(3);
   });
 });

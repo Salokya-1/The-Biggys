@@ -301,6 +301,42 @@ export function findViolations(venue: SeatVenue, allocations: Allocation[]): Vio
   return out;
 }
 
+/**
+ * Class-style seating: students sit by section, in ascending student-ID order, filling rooms row by row.
+ * Each section is kept together; rooms are used in name order (classrooms) and never over capacity.
+ */
+export function generateOrderedSeating(venuesIn: SeatVenue[], students: (SeatStudent & { sectionName?: string | null })[]): SeatingResult {
+  const venues = [...venuesIn].sort((a, b) => a.name.localeCompare(b.name));
+  const ordered = [...students].sort((a, b) => (a.sectionName ?? '').localeCompare(b.sectionName ?? '') || a.label.localeCompare(b.label));
+  const allocations: Allocation[] = [];
+  let vi = 0;
+  let seats = venues.length ? usableSeats(venues[0]) : [];
+  let si = 0;
+  const unseated: SeatStudent[] = [];
+  for (const s of ordered) {
+    while (vi < venues.length && si >= seats.length) {
+      vi++;
+      if (vi < venues.length) {
+        seats = usableSeats(venues[vi]);
+        si = 0;
+      }
+    }
+    if (vi >= venues.length) {
+      unseated.push(s);
+      continue;
+    }
+    const seat = seats[si++];
+    allocations.push({ venueId: venues[vi].id, studentId: s.studentId, offeringId: s.offeringId, row: seat.row, col: seat.col, seatLabel: seatLabel(seat.row, seat.col) });
+  }
+  const summaries: VenueSummary[] = venues.map((v) => {
+    const here = allocations.filter((a) => a.venueId === v.id);
+    const byOffering: Record<string, number> = {};
+    for (const a of here) byOffering[a.offeringId] = (byOffering[a.offeringId] ?? 0) + 1;
+    return { venueId: v.id, name: v.name, capacity: capacityOf(v), used: here.length, violations: 0, byOffering };
+  });
+  return { allocations, unseated, violations: [], venues: summaries };
+}
+
 export function generateSeating(venuesIn: SeatVenue[], students: SeatStudent[], seed = 1): SeatingResult {
   const rnd = mulberry32(seed || 1);
   const venues = [...venuesIn].sort((a, b) => capacityOf(b) - capacityOf(a) || a.name.localeCompare(b.name));
