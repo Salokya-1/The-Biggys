@@ -44,12 +44,6 @@ async function main() {
     process.exit(1);
   }
 
-  try {
-    await seedIfEmpty((m) => app.log.info(m));
-  } catch (err) {
-    app.log.error({ err }, 'first-run seed failed; the API still starts, the data is just missing');
-  }
-
   // Warm the pool so the first /health/ready is honest.
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -73,6 +67,16 @@ async function main() {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   await app.listen({ port: config.PORT, host: config.HOST });
+
+  // After listening, never before: on a small instance the seed takes minutes, and a deploy that
+  // has not bound its port yet is a deploy the platform kills.
+  void (async () => {
+    try {
+      await seedIfEmpty((m) => app.log.info(m));
+    } catch (err) {
+      app.log.error({ err }, 'first-run seed failed; the API is up, the demo data is just missing');
+    }
+  })();
 
   // Exam schedules are generated automatically three weeks before each exam window (checked on start and every 6 h).
   const runScheduler = () =>
