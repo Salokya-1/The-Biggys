@@ -43,8 +43,9 @@ const date = (y: number, m: number, d: number, h = 9) => new Date(Date.UTC(y, m 
 
 async function truncateAll() {
   await prisma.$executeRawUnsafe(`
-    TRUNCATE TABLE "Notification", "AuditLog", "SeatAllocation", "ExamSession", "Venue", "ImportBatch",
+    TRUNCATE TABLE "Notification", "AuditLog", "SeatAllocation", "ExamInvigilator", "ExamSession", "Venue", "ImportBatch",
       "Result", "Mark", "MarkSheet", "RefreshToken", "Enrollment", "AssessmentComponent", "ModuleOffering",
+      "TimetableSlot", "SlotException", "ChangeRequest", "FeeInvoice", "AdmitCard", "Section",
       "Module", "Student", "Semester", "Intake", "Programme", "GradingScheme", "User" CASCADE`);
 }
 
@@ -96,12 +97,20 @@ async function main() {
     { code: 'BSCAI', name: 'BSc (Hons) Computing with Artificial Intelligence', level: 'Undergraduate (London Metropolitan University)', idPrefix: '05', history: false },
     { code: 'BAAF', name: 'BA (Hons) Accounting & Finance', level: 'Undergraduate (London Metropolitan University)', idPrefix: '06', history: false },
   ];
-  // semester windows by number (academic year runs Sep–Jan, Feb–Jun)
+  // Academic calendar: Autumn and Spring semesters of 14 weeks each (12 teaching + 2 exam weeks),
+  // 28 weeks a year, summer break in between. Autumn starts mid-September, Spring mid-February.
+  const week = 7 * 86400e3;
   const semWindow = (startYear: number, n: number) => {
     const yearOffset = Math.floor((n - 1) / 2);
     const y = startYear + yearOffset;
-    return n % 2 === 1 ? { start: date(y, 9, 15), end: date(y + 1, 1, 31) } : { start: date(y + 1, 2, 9), end: date(y + 1, 6, 26) };
+    const start = n % 2 === 1 ? date(y, 9, 14) : date(y + 1, 2, 16);
+    const examStart = new Date(start.getTime() + 12 * week);
+    const examEnd = new Date(examStart.getTime() + 2 * week);
+    return { start, end: examEnd, examStart, examEnd, term: n % 2 === 1 ? ('AUTUMN' as const) : ('SPRING' as const) };
   };
+  const SECTION_SIZE = 24;
+  /** Cohort size: the Sep 2026 Computing intake is a full ~240-student, 10-section cohort; the rest are one section each. */
+  const cohortSize = (code: string, label: string) => (code === 'BSCC' && label === 'Sep 2026' ? 240 : SECTION_SIZE);
   // intake → number of semesters that exist so far (current semester is the last one)
   const intakes = [
     { label: 'Sep 2024', year: 2024, semesters: 5, published: 4, inPipeline: null as number | null },
@@ -202,21 +211,31 @@ async function main() {
 
     for (const it of p.history ? intakes : intakes.filter((i) => i.label === 'Sep 2026')) {
       const intake = await prisma.intake.create({ data: { programmeId: programme.id, label: it.label, startDate: date(it.year, 9, 15) } });
-      const semesters: { id: string; number: number; end: Date }[] = [];
+      const semesters: { id: string; number: number; end: Date; start: Date; examStart: Date }[] = [];
       for (let n = 1; n <= it.semesters; n++) {
         const w = semWindow(it.year, n);
-        const s = await prisma.semester.create({ data: { intakeId: intake.id, number: n, startDate: w.start, endDate: w.end } });
-        semesters.push({ id: s.id, number: n, end: w.end });
+        const s = await prisma.semester.create({
+          data: { intakeId: intake.id, number: n, term: w.term, startDate: w.start, endDate: w.end, teachingWeeks: 12, examStart: w.examStart, examEnd: w.examEnd },
+        });
+        semesters.push({ id: s.id, number: n, end: w.end, start: w.start, examStart: w.examStart });
       }
       const current = semesters[semesters.length - 1];
 
-      // students: 20 per cohort
+      // sections of ~24 students (A, B, C …)
+      const size = cohortSize(p.code, it.label);
+      const sectionCount = Math.ceil(size / SECTION_SIZE);
+      const sections: string[] = [];
+      for (let s = 0; s < sectionCount; s++) {
+        const sec = await prisma.section.create({ data: { intakeId: intake.id, name: String.fromCharCode(65 + s) } });
+        sections.push(sec.id);
+      }
+
       const cohort: typeof allStudents = [];
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < size; i++) {
         studentSeq += 1;
         const name = nextName();
         const studentId = `${String(it.year).slice(2)}${p.idPrefix}${String(i + 1).padStart(4, '0')}`;
-        // demo logins: first 5 students of Sep 2025 BSCCS; everyone else gets <id>@student.demo
+        // demo logins: first 5 students of Sep 2025 Computing; everyone else gets <id>@student.demo
         let email = `${studentId}@student.demo`;
         if (p.code === 'BSCC' && it.label === 'Sep 2025' && demoIdx < demoStudentEmails.length) email = demoStudentEmails[demoIdx++];
         const displayName = email === 'student1@demo' ? 'Dipesh Karki' : name;
@@ -228,10 +247,26 @@ async function main() {
             email,
             programmeId: programme.id,
             intakeId: intake.id,
+            sectionId: sections[Math.floor(i / SECTION_SIZE)],
             currentSemesterId: current.id,
             userId: user.id,
             status: 'ACTIVE',
             specialNeedsSeating: rand() < 0.06,
+          },
+        });
+        // semester fee for the current semester: most have paid; a few (incl. student1) have not — the admit-card demo
+        const paid = email === 'student1@demo' ? false : rand() < 0.8;
+        await prisma.feeInvoice.create({
+          data: {
+            studentId: s.id,
+            semesterId: current.id,
+            amount: 85000,
+            currency: 'NPR',
+            status: paid ? 'PAID' : 'UNPAID',
+            dueDate: new Date(current.start.getTime() + 4 * week),
+            paidAt: paid ? new Date(current.start.getTime() - randInt(1, 20) * 86400e3) : null,
+            method: paid ? pick(['eSewa', 'Khalti', 'Bank transfer', 'Cash']) : null,
+            reference: paid ? `RCPT-${studentId}-${current.number}` : null,
           },
         });
         const rec = { id: s.id, studentId, name: displayName, userId: user.id, programme: p.code, intakeLabel: it.label };
@@ -378,31 +413,43 @@ async function main() {
 
   // ---------- venues & exam sessions ----------
   const lb101 = await prisma.venue.create({ data: { name: 'LB-101', building: 'London Block', rows: 8, cols: 10, adjacencyMode: 'ROW_AND_COLUMN', disabledSeats: [{ row: 1, col: 10 }, { row: 8, col: 1 }] } });
-  const kumari = await prisma.venue.create({ data: { name: 'Kumari Hall', building: 'Main Block', rows: 12, cols: 14, adjacencyMode: 'ROW', disabledSeats: [{ row: 6, col: 7 }, { row: 6, col: 8 }, { row: 12, col: 14 }] } });
+  const kumari = await prisma.venue.create({ data: { name: 'Kumari Hall', building: 'Main Block', rows: 12, cols: 14, adjacencyMode: 'ROW', disabledSeats: [{ row: 6, col: 7 }, { row: 6, col: 8 }, { row: 12, col: 14 }], isClassroom: false } });
   const lab3 = await prisma.venue.create({ data: { name: 'Lab 3', building: 'London Block', rows: 5, cols: 8, adjacencyMode: 'ROW_AND_COLUMN', disabledSeats: [] } });
+  // classrooms for the timetable (~30 seats each) and one more exam hall
+  for (const n of ['LB-102', 'LB-103', 'LB-201', 'LB-202', 'LB-203', 'MB-301', 'MB-302', 'MB-303']) {
+    await prisma.venue.create({ data: { name: n, building: n.startsWith('LB') ? 'London Block' : 'Main Block', rows: 5, cols: 6, adjacencyMode: 'ROW', disabledSeats: [] } });
+  }
+  await prisma.venue.create({ data: { name: 'Auditorium', building: 'Main Block', rows: 15, cols: 16, adjacencyMode: 'ROW', disabledSeats: [], isClassroom: false } });
 
   const sem2Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2025' && o.sem === 2);
-  const s1Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2026' && o.sem === 1 && ['CS4001', 'BM4001'].includes(o.code));
+  const s1Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2026' && o.sem === 1 && ['BM4001', 'NS4001'].includes(o.code));
   await prisma.examSession.create({
     data: {
       title: 'Semester 2 Resit Exams — Computer Architectures & Financial Accounting',
+      kind: 'RESIT',
       date: date(2026, 9, 19),
       startTime: '09:00',
       durationMin: 120,
       seed: 7,
+      semesterId: sem2Offerings[0]?.semesterId,
       offerings: { connect: sem2Offerings.filter((o) => ['CS4003', 'BM4003'].includes(o.code)).map((o) => ({ id: o.id })) },
       venues: { connect: [{ id: lb101.id }, { id: lab3.id }] },
+      generatedBy: 'manual',
     },
   });
   const midterm = await prisma.examSession.create({
     data: {
-      title: 'Semester 1 Mid-term — Programming & Business Management (Sep 2026 intake)',
+      title: 'Class test — Business Management & Introduction to Networking (Sep 2026 intake)',
+      kind: 'CLASS_TEST',
+      seatingMode: 'BY_ID',
       date: date(2026, 10, 24),
       startTime: '13:00',
       durationMin: 90,
       seed: 3,
+      semesterId: s1Offerings[0]?.semesterId,
       offerings: { connect: s1Offerings.map((o) => ({ id: o.id })) },
       venues: { connect: [{ id: kumari.id }] },
+      generatedBy: 'manual',
     },
   });
   // The mid-term is already seated (the resit session is left pending for the live demo).
