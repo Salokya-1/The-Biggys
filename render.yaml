@@ -41,6 +41,9 @@ services:
         sync: false # set to the biggys-web URL once it exists
       - key: RUN_MIGRATIONS_ON_START
         value: 'true'
+      # Loads the demo data the first time the database is empty, and never again.
+      - key: SEED_ON_EMPTY
+        value: 'true'
       - key: LOG_LEVEL
         value: info
       - key: OPENROUTER_API_KEY

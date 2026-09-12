@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { config, isProd } from './config';
 import { buildApp } from './app';
 import { prisma } from './lib/prisma';
@@ -14,6 +15,26 @@ function runMigrations(log: (msg: string) => void) {
   });
 }
 
+/**
+ * First-run demo data.
+ *
+ * A freshly created deployment has the schema but no rows, which makes every screen look broken.
+ * Seeding only when the database is genuinely empty means this is safe to leave switched on: it
+ * cannot overwrite real data, because the moment there is any, it does nothing.
+ */
+async function seedIfEmpty(log: (msg: string) => void) {
+  if (config.SEED_ON_EMPTY !== 'true') return;
+  const users = await prisma.user.count();
+  if (users > 0) {
+    log(`database already has ${users} users - not seeding`);
+    return;
+  }
+  log('empty database - loading the demo data');
+  // tsx ships as an ESM CLI; resolve the file rather than relying on a bin on PATH.
+  const tsx = path.join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  execFileSync(process.execPath, [tsx, path.join('prisma', 'seed.ts')], { stdio: 'inherit', env: process.env, cwd: process.cwd() });
+}
+
 async function main() {
   const app = await buildApp();
   try {
@@ -21,6 +42,12 @@ async function main() {
   } catch (err) {
     app.log.fatal({ err }, 'migration failed - refusing to start');
     process.exit(1);
+  }
+
+  try {
+    await seedIfEmpty((m) => app.log.info(m));
+  } catch (err) {
+    app.log.error({ err }, 'first-run seed failed; the API still starts, the data is just missing');
   }
 
   // Warm the pool so the first /health/ready is honest.
