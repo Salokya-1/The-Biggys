@@ -156,14 +156,19 @@ export default function TimetablePage() {
   const inPeriod = (i: Item, p: { startTime: string; endTime: string }) => i.startTime === p.startTime && i.endTime === p.endTime;
   const offGrid = (day: { items: Item[] }) => day.items.filter((i) => !periods.some((p) => inPeriod(i, p)));
 
-  const onDrop = (dayIndex: number, p: { startTime: string; endTime: string }) => {
-    const item = dragging;
+  /** The slot id travels in the drag payload, so a drop works even before React re-renders. */
+  const DRAG_TYPE = 'application/x-rte-slot';
+  const allItems = useMemo(() => (wk.data?.days ?? []).flatMap((d) => d.items), [wk.data]);
+  const onDrop = (e: React.DragEvent, dayIndex: number, p: { startTime: string; endTime: string }) => {
+    e.preventDefault();
+    const slotId = e.dataTransfer.getData(DRAG_TYPE) || dragging?.slotId;
     setDragging(null);
     setHover(null);
-    if (!item?.slotId || !canEdit) return;
-    const dayOfWeek = dayIndex + 1;
+    if (!slotId || !canEdit) return;
+    const item = allItems.find((i) => i.slotId === slotId);
+    if (!item) return;
     if (item.startTime === p.startTime && item.date === weekdays[dayIndex]?.date) return;
-    move.mutate({ item, dayOfWeek, startTime: p.startTime, endTime: p.endTime });
+    move.mutate({ item, dayOfWeek: dayIndex + 1, startTime: p.startTime, endTime: p.endTime });
   };
 
   return (
@@ -261,15 +266,13 @@ export default function TimetablePage() {
                     <div
                       key={cellKey}
                       onDragOver={(e) => {
-                        if (!dragging) return;
+                        if (!canEdit || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
                         e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
                         setHover(cellKey);
                       }}
                       onDragLeave={() => setHover((h) => (h === cellKey ? null : h))}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        onDrop(di, p);
-                      }}
+                      onDrop={(e) => onDrop(e, di, p)}
                       onClick={() => setSelectedDay(d.date)}
                       className={cn('min-h-[62px] space-y-1 border-b border-r p-1', hover === cellKey && 'bg-primary/10 ring-1 ring-inset ring-primary')}
                     >
@@ -277,7 +280,11 @@ export default function TimetablePage() {
                         <div
                           key={it.id}
                           draggable={canEdit && it.kind === 'CLASS' && it.status !== 'CANCELLED'}
-                          onDragStart={() => setDragging(it)}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData(DRAG_TYPE, it.slotId ?? '');
+                            e.dataTransfer.effectAllowed = 'move';
+                            setDragging(it);
+                          }}
                           onDragEnd={() => { setDragging(null); setHover(null); }}
                           title={`${it.startTime}–${it.endTime} ${it.title}\n${it.subtitle}${canEdit && it.kind === 'CLASS' ? '\nDrag to move this class' : ''}`}
                           className={cn(

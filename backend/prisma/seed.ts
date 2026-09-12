@@ -311,19 +311,25 @@ async function main() {
 
   const leadersByYear = [leaderCS.id, leaderCS2.id, leaderBM.id];
   /** Split a published year list across its two semesters, keeping the credit load even. */
-  const modulesByProgramme: Record<string, { code: string; title: string; sem: number; leader: string; comps: ComponentSpec[] }[]> = Object.fromEntries(
+  const modulesByProgramme: Record<string, { code: string; title: string; credits: number; sem: number; leader: string; comps: ComponentSpec[] }[]> = Object.fromEntries(
     Object.entries(CATALOGUE).map(([code, years]) => [
       code,
       years.flatMap((mods, yi) => {
-        const half = Math.ceil(mods.length / 2);
-        return mods.map((m, i) => ({
-          code: m.code,
-          title: m.title,
-          credits: m.credits,
-          sem: yi * 2 + (i < half ? 1 : 2),
-          leader: code.startsWith('B') && code.includes('A') && !code.startsWith('BSC') ? leaderBM.id : leadersByYear[yi],
-          comps: m.credits >= 30 ? three() : cw60ex40(),
-        }));
+        // Balance the year's credits across its two semesters (a year is 120 credits, so 60 each).
+        const half = mods.reduce((n, m) => n + m.credits, 0) / 2;
+        let first = 0;
+        return mods.map((m) => {
+          const toFirst = first + m.credits <= half;
+          if (toFirst) first += m.credits;
+          return {
+            code: m.code,
+            title: m.title,
+            credits: m.credits,
+            sem: yi * 2 + (toFirst ? 1 : 2),
+            leader: code.startsWith('BSC') ? leadersByYear[yi] : leaderBM.id,
+            comps: m.credits >= 30 ? three() : cw60ex40(),
+          };
+        });
       }),
     ]),
   );
@@ -365,7 +371,7 @@ async function main() {
     const programme = await prisma.programme.create({ data: { code: p.code, name: p.name, level: p.level } });
     const modules = new Map<string, { id: string; sem: number; comps: ComponentSpec[] }>();
     for (const m of modulesByProgramme[p.code]) {
-      const mod = await prisma.module.create({ data: { code: m.code, title: m.title, credits: m.comps.length === 3 ? 20 : 15, semesterNumber: m.sem, programmeId: programme.id, moduleLeaderId: m.leader } });
+      const mod = await prisma.module.create({ data: { code: m.code, title: m.title, credits: m.credits, semesterNumber: m.sem, programmeId: programme.id, moduleLeaderId: m.leader } });
       modules.set(m.code, { id: mod.id, sem: m.sem, comps: m.comps });
     }
 
@@ -540,8 +546,9 @@ async function main() {
   }
 
   // ---------- a correction cycle: Sep 2024 CS5004 v1 published → correction requested → v2 draft ----------
-  const corr = offeringsAll.find((o) => o.code === 'CS6004' && o.intakeLabel === 'Sep 2024')!;
-  const v1 = await prisma.markSheet.findFirst({ where: { moduleOfferingId: corr.id, version: 1 }, include: { marks: true } });
+  // A published Sep 2024 Computing module gets the correction cycle (published -> correction -> v2 draft).
+  const corr = offeringsAll.find((o) => o.intakeLabel === 'Sep 2024' && o.programme === 'BSCC' && o.sem === 4)!;
+  const v1 = corr ? await prisma.markSheet.findFirst({ where: { moduleOfferingId: corr.id, version: 1 }, include: { marks: true } }) : null;
   if (v1) {
     await prisma.markSheet.update({ where: { id: v1.id }, data: { status: 'CORRECTION_REQUESTED', lockVersion: { increment: 1 } } });
     const v2 = await prisma.markSheet.create({ data: { moduleOfferingId: corr.id, version: 2, status: 'DRAFT', gradingSchemeId: scheme.id } });
