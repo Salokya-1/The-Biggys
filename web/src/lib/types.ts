@@ -402,3 +402,76 @@ export interface ReasonCheck {
   notes: string[];
   category?: string;
 }
+
+export type ClassKind = 'LECTURE' | 'TUTORIAL' | 'WORKSHOP';
+
+export interface ModuleOverview {
+  offering: {
+    id: string;
+    module: { id: string; code: string; title: string; credits: number };
+    semester: { number: number; term: string; startDate: string; endDate: string };
+    intake: string;
+    programme: { code: string; name: string };
+    teachers: { id: string; name: string; email: string }[];
+    moduleLeader: string | null;
+    markSheets: { id: string; version: number; status: string; publishedAt: string | null }[];
+  };
+  stats: {
+    enrolled: number;
+    sections: number;
+    resitEnrolments: number;
+    withResult: number;
+    awaiting: number;
+    passed: number;
+    failed: number;
+    resits: number;
+    deferred: number;
+    passRate: number | null;
+    average: number | null;
+    highest: number | null;
+    lowest: number | null;
+    published: number;
+  };
+  grades: { grade: string; students: number }[];
+  bands: { band: string; from: number; students: number }[];
+  bySection: { section: string; students: number; passed: number; failed: number; resits: number; average: number | null }[];
+  components: { id: string; name: string; weight: number; maxMark: number; averagePercent: number | null; marked: number; absent: number }[];
+  classes: { id: string; kind: ClassKind; kindLabel: string; section: string; day: string; dayOfWeek: number; startTime: string; endTime: string; venue: string | null; teacher: string }[];
+  students: {
+    studentRecordId: string;
+    studentId: string;
+    name: string;
+    section: string | null;
+    attempt: number;
+    isResit: boolean;
+    overallMark: number | null;
+    grade: string | null;
+    outcome: string | null;
+    published: boolean;
+  }[];
+}
+
+export interface CameraRequest {
+  id: string;
+  reference: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+  status: 'PENDING' | 'SENT' | 'APPROVED' | 'DENIED';
+  itSupportEmail: string;
+  notifiedAt: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  venue: { id: string; name: string; building: string };
+  requestedBy: { id: string; name: string; email: string };
+  examSession: { id: string; title: string; kind: string } | null;
+  slot: { id: string; startTime: string; endTime: string; section: { name: string }; moduleOffering: { module: { code: string; title: string } } } | null;
+}
+
+export interface CameraRequestList {
+  itSupportEmail: string;
+  mailerConfigured: boolean;
+  items: CameraRequest[];
+}

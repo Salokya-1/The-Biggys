@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -48,7 +49,9 @@ export default function ExamsPage() {
   const qc = useQueryClient();
   const isAdmin = user?.role === 'ADMIN';
   const exams = useQuery({ queryKey: ['exams'], queryFn: () => api<Session[]>('/api/exams') });
-  const [open, setOpen] = useState(false);
+  // The timetable's "Add exam" button links here with ?new=1, so the form is already open.
+  const search = useSearchParams();
+  const [open, setOpen] = useState(search.get('new') === '1');
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const offerings = useQuery({ queryKey: ['offerings'], queryFn: () => api<Offering[]>('/api/offerings'), enabled: open });
   const venues = useQuery({ queryKey: ['venues'], queryFn: () => api<Venue[]>('/api/venues'), enabled: open });

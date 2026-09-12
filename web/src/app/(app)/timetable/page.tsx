@@ -3,7 +3,8 @@
 import { useMemo, useState, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, GripVertical, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, GripVertical, Plus, RefreshCw } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,6 +46,8 @@ interface Item {
   teacher?: { id: string; name: string } | null;
   venue?: { id: string; name: string } | null;
   slotId?: string;
+  classKind?: 'LECTURE' | 'TUTORIAL' | 'WORKSHOP';
+  offeringId?: string;
   examSessionId?: string;
   status: 'SCHEDULED' | 'CANCELLED' | 'CHANGED';
   change?: { kind: string; reason: string; originalTeacher?: string | null; originalVenue?: string | null };
@@ -73,8 +76,21 @@ interface Health {
 }
 type Teacher = { id: string; name: string };
 type Venue = { id: string; name: string; isClassroom: boolean };
+type Offering = { id: string; module: { code: string; title: string }; lecturer: { id: string; name: string } | null; coLecturer?: { id: string; name: string } | null };
+interface NewClass {
+  sectionId: string;
+  moduleOfferingId: string;
+  teacherId: string;
+  venueId: string;
+  kind: 'LECTURE' | 'TUTORIAL' | 'WORKSHOP';
+  dayOfWeek: number;
+  period: string; // "start-end"
+}
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+/** The teaching week runs Sunday to Friday; Saturday is the weekend. */
+const TEACHING_WEEK = [{ dayOfWeek: 7, label: 'Sun', index: 6 }, { dayOfWeek: 1, label: 'Mon', index: 0 }, { dayOfWeek: 2, label: 'Tue', index: 1 }, { dayOfWeek: 3, label: 'Wed', index: 2 }, { dayOfWeek: 4, label: 'Thu', index: 3 }, { dayOfWeek: 5, label: 'Fri', index: 4 }];
+const KIND_LABEL: Record<string, string> = { LECTURE: 'Lecture', TUTORIAL: 'Tutorial', WORKSHOP: 'Workshop' };
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const plusDaysIso = (d: number) => new Date(Date.now() + d * 86400e3).toISOString().slice(0, 10);
 const subscribeNoop = () => () => {};
@@ -105,6 +121,8 @@ export default function TimetablePage() {
   const [dragging, setDragging] = useState<Item | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [clash, setClash] = useState<{ item: Item; message: string; clashes: string[]; alternatives: SlotCandidate[] } | null>(null);
+  const [newClass, setNewClass] = useState<NewClass | null>(null);
+  const router = useRouter();
   const today = useToday();
   const soon = useSyncExternalStore(subscribeNoop, () => plusDaysIso(21), () => plusDaysIso(21));
 
@@ -121,6 +139,27 @@ export default function TimetablePage() {
   const wk = useQuery({ queryKey: ['tt', 'week', query], queryFn: () => api<Week>(`/api/timetable/week${query}`), enabled: !!sem });
   const grid = useQuery({ queryKey: ['tt', 'periods', sem?.id], queryFn: () => api<PeriodGrid>(`/api/timetable/periods${qs({ semesterId: sem?.id })}`), enabled: !!sem });
   const health = useQuery({ queryKey: ['tt', 'health', sem?.id], queryFn: () => api<Health>(`/api/timetable/health${qs({ semesterId: sem?.id })}`), enabled: !!sem && isStaff });
+  const offerings = useQuery({ queryKey: ['tt', 'offerings', sem?.id], queryFn: () => api<Offering[]>(`/api/offerings${qs({ semesterId: sem?.id })}`), enabled: !!sem && !!newClass });
+
+  /** Add a single class to the routine. The same clash, cut-off and gap checks run as for a drag. */
+  const addClass = useMutation({
+    mutationFn: (v: NewClass) => {
+      const [startTime, endTime] = v.period.split('-');
+      return api('/api/timetable/slots', {
+        method: 'POST',
+        body: { semesterId: sem!.id, sectionId: v.sectionId, moduleOfferingId: v.moduleOfferingId, teacherId: v.teacherId, venueId: v.venueId || null, kind: v.kind, dayOfWeek: v.dayOfWeek, startTime, endTime },
+      });
+    },
+    onSuccess: () => {
+      toast.success('Class added to the routine');
+      setNewClass(null);
+      void qc.invalidateQueries({ queryKey: ['tt'] });
+    },
+    onError: (e) => {
+      const details = e instanceof ApiError && e.details && typeof e.details === 'object' ? (e.details as { clashes?: string[] }) : {};
+      toast.error(e instanceof Error ? e.message : 'Could not add the class', { description: details.clashes?.join(' · ') });
+    },
+  });
 
   const generate = useMutation({
     mutationFn: () => api<{ slots: number; unplaced: { section?: string; module?: string; missing: number; reason: string }[]; gapViolations: unknown[]; dayEndsBy: string }>('/api/timetable/generate', { method: 'POST', body: { semesterId: sem!.id, replace: (sem?._count.slots ?? 0) > 0 } }),
@@ -152,7 +191,9 @@ export default function TimetablePage() {
   const isExamWeek = sem ? effectiveWeek > sem.teachingWeeks : false;
   const selected = wk.data?.days.find((d) => d.date === selectedDay) ?? null;
   const periods = grid.data?.periods ?? [];
-  const weekdays = (wk.data?.days ?? []).slice(0, 5);
+  // Sunday first, Saturday dropped — the days a class can actually be on.
+  const allDays = wk.data?.days ?? [];
+  const weekdays = allDays.length ? TEACHING_WEEK.map((d) => ({ ...allDays[d.index], dayOfWeek: d.dayOfWeek, label: d.label })) : [];
   const inPeriod = (i: Item, p: { startTime: string; endTime: string }) => i.startTime === p.startTime && i.endTime === p.endTime;
   const offGrid = (day: { items: Item[] }) => day.items.filter((i) => !periods.some((p) => inPeriod(i, p)));
 
@@ -168,7 +209,7 @@ export default function TimetablePage() {
     const item = allItems.find((i) => i.slotId === slotId);
     if (!item) return;
     if (item.startTime === p.startTime && item.date === weekdays[dayIndex]?.date) return;
-    move.mutate({ item, dayOfWeek: dayIndex + 1, startTime: p.startTime, endTime: p.endTime });
+    move.mutate({ item, dayOfWeek: weekdays[dayIndex].dayOfWeek, startTime: p.startTime, endTime: p.endTime });
   };
 
   return (
@@ -184,11 +225,23 @@ export default function TimetablePage() {
                 : "Your section's weekly routine and exam dates. Click a day for detail or to request an absence."}
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        {canEdit && sem && (
+          <Button size="sm" variant="outline" onClick={() => setNewClass({ sectionId: sem.sections[0]?.id ?? '', moduleOfferingId: '', teacherId: '', venueId: '', kind: 'LECTURE', dayOfWeek: 7, period: periods[0] ? `${periods[0].startTime}-${periods[0].endTime}` : '08:00-09:30' })}>
+            <Plus className="mr-1 h-4 w-4" /> Add class
+          </Button>
+        )}
+        {isStaff && (
+          <Button size="sm" variant="outline" onClick={() => router.push('/exams?new=1')}>
+            <CalendarDays className="mr-1 h-4 w-4" /> Add exam
+          </Button>
+        )}
         {canEdit && sem && (
           <Button size="sm" variant={sem._count.slots ? 'outline' : 'default'} disabled={generate.isPending} onClick={() => (sem._count.slots === 0 || confirm(`Regenerate the routine for ${sem.intake.programme.code} ${sem.intake.label} Semester ${sem.number}? Existing slots and one-off changes are replaced.`)) && generate.mutate()}>
             <RefreshCw className={cn('mr-1 h-4 w-4', generate.isPending && 'animate-spin')} /> {sem._count.slots ? 'Regenerate routine' : 'Generate routine'}
           </Button>
         )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -251,7 +304,7 @@ export default function TimetablePage() {
             <div className="border-b border-r bg-muted/40 p-2 text-[11px] text-muted-foreground">Period</div>
             {weekdays.map((d, i) => (
               <button key={d.date} onClick={() => setSelectedDay(d.date)} className={cn('border-b border-r px-2 py-2 text-left text-xs hover:bg-accent', d.date === today && 'bg-primary/10')}>
-                <div className="font-semibold">{DAYS[i]}</div>
+                <div className="font-semibold">{weekdays[i].label}</div>
                 <div className="text-muted-foreground">{d.date.slice(5)} · {d.items.length} item{d.items.length === 1 ? '' : 's'}</div>
               </button>
             ))}
@@ -337,6 +390,84 @@ export default function TimetablePage() {
       {selected && sem && <DayView day={selected} sem={sem} teachers={teachers.data ?? []} venues={venues.data ?? []} onClose={() => setSelectedDay(null)} />}
 
       {/* ---------- clash dialog with alternatives ---------- */}
+      {/* ---------- add one class to the routine ---------- */}
+      <Dialog open={!!newClass} onOpenChange={(o) => !o && setNewClass(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Add a class</DialogTitle>
+            <DialogDescription>
+              This goes through the same checks as a drag: the section, the teacher and the room must all be free, a final-year day must end by {grid.data?.dayEndsBy ?? '10:00'}, and no group may be left a gap longer than {grid.data?.maxGapHours ?? 2} hours.
+            </DialogDescription>
+          </DialogHeader>
+          {newClass && sem && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Section</Label>
+                <Select value={newClass.sectionId} onValueChange={(v) => setNewClass({ ...newClass, sectionId: v ?? '' })} items={Object.fromEntries(sem.sections.map((s) => [s.id, s.name]))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Section" /></SelectTrigger>
+                  <SelectContent>{sem.sections.map((s) => <SelectItem key={s.id} value={s.id}>Section {s.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Class kind</Label>
+                <Select value={newClass.kind} onValueChange={(v) => setNewClass({ ...newClass, kind: (v ?? 'LECTURE') as NewClass['kind'] })} items={KIND_LABEL}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>{Object.entries(KIND_LABEL).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Module</Label>
+                <Select
+                  value={newClass.moduleOfferingId}
+                  onValueChange={(v) => {
+                    const o = offerings.data?.find((x) => x.id === v);
+                    setNewClass({ ...newClass, moduleOfferingId: v ?? '', teacherId: newClass.teacherId || o?.lecturer?.id || '' });
+                  }}
+                  items={Object.fromEntries((offerings.data ?? []).map((o) => [o.id, `${o.module.code} · ${o.module.title}`]))}
+                >
+                  <SelectTrigger className="w-full"><SelectValue placeholder={offerings.isPending ? 'Loading modules…' : 'Choose a module'} /></SelectTrigger>
+                  <SelectContent>{(offerings.data ?? []).map((o) => <SelectItem key={o.id} value={o.id}>{o.module.code} · {o.module.title}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Teacher</Label>
+                <Select value={newClass.teacherId} onValueChange={(v) => setNewClass({ ...newClass, teacherId: v ?? '' })} items={Object.fromEntries((teachers.data ?? []).map((t) => [t.id, t.name]))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Choose a teacher" /></SelectTrigger>
+                  <SelectContent>{(teachers.data ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Day</Label>
+                <Select value={String(newClass.dayOfWeek)} onValueChange={(v) => setNewClass({ ...newClass, dayOfWeek: Number(v ?? 7) })} items={Object.fromEntries(TEACHING_WEEK.map((d) => [String(d.dayOfWeek), d.label]))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>{TEACHING_WEEK.map((d) => <SelectItem key={d.dayOfWeek} value={String(d.dayOfWeek)}>{d.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Period</Label>
+                <Select value={newClass.period} onValueChange={(v) => setNewClass({ ...newClass, period: v ?? '' })} items={Object.fromEntries(periods.map((p) => [`${p.startTime}-${p.endTime}`, `${p.startTime}–${p.endTime}`]))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>{periods.map((p) => <SelectItem key={p.startTime} value={`${p.startTime}-${p.endTime}`}>{p.startTime}–{p.endTime}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Room</Label>
+                <Select value={newClass.venueId} onValueChange={(v) => setNewClass({ ...newClass, venueId: v ?? '' })} items={Object.fromEntries((venues.data ?? []).filter((v) => v.isClassroom).map((v) => [v.id, v.name]))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Choose a room" /></SelectTrigger>
+                  <SelectContent>{(venues.data ?? []).filter((v) => v.isClassroom).map((v) => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewClass(null)}>Cancel</Button>
+            <Button disabled={!newClass?.sectionId || !newClass?.moduleOfferingId || !newClass?.teacherId || addClass.isPending} onClick={() => newClass && addClass.mutate(newClass)}>
+              {addClass.isPending ? 'Adding…' : 'Add class'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!clash} onOpenChange={(o) => !o && setClash(null)}>
         <DialogContent>
           <DialogHeader>

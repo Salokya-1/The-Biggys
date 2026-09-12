@@ -16,6 +16,7 @@ const slotBody = z.object({
   moduleOfferingId: z.string().min(1),
   teacherId: z.string().min(1),
   venueId: z.string().min(1).nullable().optional(),
+  kind: z.enum(['LECTURE', 'TUTORIAL', 'WORKSHOP']).optional(),
   dayOfWeek: z.number().int().min(1).max(7),
   startTime: time,
   endTime: time,

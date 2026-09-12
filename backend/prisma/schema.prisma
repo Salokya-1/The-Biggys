@@ -123,20 +123,21 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   student             Student?
-  ledModules          Module[]          @relation("ModuleLeader")
-  lecturedOfferings   ModuleOffering[]  @relation("OfferingLecturer")
-  coLecturedOfferings ModuleOffering[]  @relation("OfferingCoLecturer")
-  submittedSheets     MarkSheet[]       @relation("SheetSubmitter")
-  approvedSheets      MarkSheet[]       @relation("SheetApprover")
-  publishedSheets     MarkSheet[]       @relation("SheetPublisher")
+  ledModules          Module[]              @relation("ModuleLeader")
+  lecturedOfferings   ModuleOffering[]      @relation("OfferingLecturer")
+  coLecturedOfferings ModuleOffering[]      @relation("OfferingCoLecturer")
+  cameraRequests      CameraAccessRequest[] @relation("CameraRequester")
+  submittedSheets     MarkSheet[]           @relation("SheetSubmitter")
+  approvedSheets      MarkSheet[]           @relation("SheetApprover")
+  publishedSheets     MarkSheet[]           @relation("SheetPublisher")
   importBatches       ImportBatch[]
   auditLogs           AuditLog[]
   notifications       Notification[]
   refreshTokens       RefreshToken[]
-  taughtSlots         TimetableSlot[]   @relation("SlotTeacher")
-  coverSlots          SlotException[]   @relation("ExceptionTeacher")
-  requests            ChangeRequest[]   @relation("Requester")
-  decidedRequests     ChangeRequest[]   @relation("Decider")
+  taughtSlots         TimetableSlot[]       @relation("SlotTeacher")
+  coverSlots          SlotException[]       @relation("ExceptionTeacher")
+  requests            ChangeRequest[]       @relation("Requester")
+  decidedRequests     ChangeRequest[]       @relation("Decider")
   invigilations       ExamInvigilator[]
 }
 
@@ -444,13 +445,14 @@ model TimetableSlot {
   weekTo           Int       @default(12)
   createdAt        DateTime  @default(now())
 
-  semester       Semester        @relation(fields: [semesterId], references: [id])
-  section        Section         @relation(fields: [sectionId], references: [id])
-  moduleOffering ModuleOffering  @relation(fields: [moduleOfferingId], references: [id])
-  teacher        User            @relation("SlotTeacher", fields: [teacherId], references: [id])
-  venue          Venue?          @relation(fields: [venueId], references: [id])
+  semester       Semester              @relation(fields: [semesterId], references: [id])
+  section        Section               @relation(fields: [sectionId], references: [id])
+  moduleOffering ModuleOffering        @relation(fields: [moduleOfferingId], references: [id])
+  teacher        User                  @relation("SlotTeacher", fields: [teacherId], references: [id])
+  venue          Venue?                @relation(fields: [venueId], references: [id])
   exceptions     SlotException[]
   requests       ChangeRequest[]
+  cameraRequests CameraAccessRequest[] @relation("SlotCameraRequests")
 
   @@index([semesterId, sectionId])
   @@index([teacherId, dayOfWeek])
@@ -521,12 +523,13 @@ model ExamSession {
   generatedBy String? // "auto" | "manual"
   createdAt   DateTime    @default(now())
 
-  semester        Semester?         @relation(fields: [semesterId], references: [id])
+  semester        Semester?             @relation(fields: [semesterId], references: [id])
   offerings       ModuleOffering[]
   sections        Section[]
   venues          Venue[]
   seatAllocations SeatAllocation[]
   invigilators    ExamInvigilator[]
+  cameraRequests  CameraAccessRequest[]
 
   @@index([date])
 }
@@ -562,6 +565,7 @@ model Venue {
   slots           TimetableSlot[]
   slotExceptions  SlotException[]
   invigilations   ExamInvigilator[]
+  cameraRequests  CameraAccessRequest[]
 }
 
 model SeatAllocation {
@@ -665,4 +669,62 @@ enum ClassKind {
   LECTURE
   TUTORIAL
   WORKSHOP
+}
+
+/// A request to IT support for camera access to a room for the length of one class or exam.
+/// Only the RTE admin may raise one; every request emails IT support and is kept for the record.
+model CameraAccessRequest {
+  id             String              @id @default(cuid())
+  reference      String              @unique
+  venueId        String
+  examSessionId  String?
+  slotId         String?
+  date           DateTime
+  startTime      String
+  endTime        String
+  reason         String
+  status         CameraRequestStatus @default(PENDING)
+  requestedById  String
+  itSupportEmail String
+  notifiedAt     DateTime?
+  decidedAt      DateTime?
+  decisionNote   String?
+  createdAt      DateTime            @default(now())
+
+  venue       Venue          @relation(fields: [venueId], references: [id])
+  examSession ExamSession?   @relation(fields: [examSessionId], references: [id])
+  slot        TimetableSlot? @relation("SlotCameraRequests", fields: [slotId], references: [id])
+  requestedBy User           @relation("CameraRequester", fields: [requestedById], references: [id])
+
+  @@index([status, date])
+}
+
+enum CameraRequestStatus {
+  PENDING
+  SENT
+  APPROVED
+  DENIED
+}
+
+/// Outbox for every message the system sends. Rows are kept even when SMTP is not configured, so
+/// the trail of who was told what stays auditable and the demo can show it.
+model EmailMessage {
+  id          String      @id @default(cuid())
+  to          String
+  subject     String
+  body        String
+  status      EmailStatus @default(QUEUED)
+  error       String?
+  sentAt      DateTime?
+  relatedType String?
+  relatedId   String?
+  createdAt   DateTime    @default(now())
+
+  @@index([status, createdAt])
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
 }

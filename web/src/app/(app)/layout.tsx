@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Armchair, BookOpen, Building2, CalendarDays, CalendarClock, ClipboardCheck, GraduationCap, Inbox, LayoutDashboard, LogOut, Receipt, ShieldCheck, Sun, Users } from 'lucide-react';
+import { Armchair, BookOpen, Building2, CalendarDays, CalendarClock, ClipboardCheck, GraduationCap, Inbox, LayoutDashboard, LogOut, Receipt, ShieldCheck, Sun, Users, Video } from 'lucide-react';
 import { Assistant } from '@/components/assistant';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +33,7 @@ const NAV: NavItem[] = [
   { href: '/exams', label: 'Exams', icon: CalendarDays, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/requests', label: 'Requests', icon: Inbox, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/venues', label: 'Rooms', icon: Building2, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'seating.read' },
+  { href: '/camera', label: 'Camera access', icon: Video, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'camera.read' },
   { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'fees.read' },
   { href: '/retakes', label: 'Retakes', icon: Sun, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'module.read' },
   { href: '/admin/users', label: 'Users', icon: ShieldCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage' },

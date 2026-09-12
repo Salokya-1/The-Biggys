@@ -22,6 +22,8 @@ export type SlotWithRelations = Prisma.TimetableSlotGetPayload<{ include: typeof
 
 export interface DayItem {
   kind: 'CLASS' | 'EXAM';
+  /** Lecture, tutorial or workshop — only on classes. */
+  classKind?: 'LECTURE' | 'TUTORIAL' | 'WORKSHOP';
   id: string;
   date: string;
   startTime: string;
@@ -33,6 +35,8 @@ export interface DayItem {
   teacher?: { id: string; name: string } | null;
   venue?: { id: string; name: string } | null;
   slotId?: string;
+  /** The module offering behind a class, so the UI can link to its overview. */
+  offeringId?: string;
   examSessionId?: string;
   status: 'SCHEDULED' | 'CANCELLED' | 'CHANGED';
   change?: { kind: string; reason: string; originalTeacher?: string | null; originalVenue?: string | null };
@@ -84,17 +88,19 @@ export async function buildDay(date: Date, filter: DayFilter): Promise<DayItem[]
       if (filter.teacherId && teacher.id !== filter.teacherId && s.teacher.id !== filter.teacherId) continue;
       items.push({
         kind: 'CLASS',
+        classKind: s.kind,
         id: `slot:${s.id}:${dayIso(date)}`,
         date: dayIso(date),
         startTime,
         endTime,
         title: `${s.moduleOffering.module.code} · ${s.moduleOffering.module.title}`,
-        subtitle: `Section ${s.section.name} · ${s.section.intake.programme.code} ${s.section.intake.label} · ${teacher.name}${venue ? ` · ${venue.name}` : ''}`,
+        subtitle: `${s.kind.charAt(0) + s.kind.slice(1).toLowerCase()} · Section ${s.section.name} · ${s.section.intake.programme.code} ${s.section.intake.label} · ${teacher.name}${venue ? ` · ${venue.name}` : ''}`,
         module: s.moduleOffering.module,
         section: { id: s.section.id, name: s.section.name },
         teacher,
         venue: venue ? { id: venue.id, name: venue.name } : null,
         slotId: s.id,
+        offeringId: s.moduleOffering.id,
         status: ex ? (ex.kind === 'CANCELLED' ? 'CANCELLED' : 'CHANGED') : 'SCHEDULED',
         change: ex ? { kind: ex.kind, reason: ex.reason, originalTeacher: ex.kind === 'TEACHER_CHANGE' ? s.teacher.name : null, originalVenue: ex.kind === 'ROOM_CHANGE' ? s.venue?.name ?? null : null } : undefined,
         week: sem.week!,

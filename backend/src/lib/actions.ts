@@ -38,6 +38,8 @@ export const ACTIONS = [
   { key: 'audit.read', label: 'Read the audit log', group: 'Administration', roles: ['ADMIN'] },
   { key: 'users.manage', label: 'Manage users, roles and permissions', group: 'Administration', roles: ['ADMIN'] },
   { key: 'retakes.run', label: 'Generate summer retakes', group: 'Administration', roles: ['ADMIN'] },
+  { key: 'camera.read', label: 'See camera access requests', group: 'Exams', roles: ['ADMIN', 'MODULE_LEADER'] },
+  { key: 'camera.request', label: 'Ask IT support for camera access', group: 'Exams', roles: ['ADMIN'] },
   { key: 'assistant.use', label: 'Use the AI assistant', group: 'Administration', roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
 ] as const satisfies readonly { key: string; label: string; group: string; roles: readonly Role[] }[];
 

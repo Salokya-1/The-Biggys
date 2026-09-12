@@ -21,6 +21,8 @@ import { feeRoutes } from './routes/fees';
 import { retakeRoutes } from './routes/retakes';
 import { assistantRoutes } from './routes/assistant';
 import { adminUserRoutes } from './routes/admin-users';
+import { cameraRoutes } from './routes/camera';
+import { moduleOverviewRoutes } from './routes/module-overview';
 import multipart from '@fastify/multipart';
 
 export async function buildApp() {
@@ -102,6 +104,8 @@ export async function buildApp() {
       await api.register(retakeRoutes);
       await api.register(assistantRoutes);
       await api.register(adminUserRoutes);
+      await api.register(cameraRoutes);
+      await api.register(moduleOverviewRoutes);
     },
     { prefix: '/api' },
   );
