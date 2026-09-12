@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { MODULE_PALETTE } from '@/components/seat-grid';
 import { ReasonField } from '@/components/reason-field';
 import { CombineClasses } from '@/components/combine-classes';
+import { TakeRegister } from '@/components/take-register';
 import { api, ApiError, downloadWithAuth, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -649,6 +650,9 @@ function DayView({ day, sem, teachers, venues, onClose }: { day: { date: string;
                     {it.slotId ? <CombineClasses slotId={it.slotId} onDone={onClose} /> : null}
                   </>
                 )}
+                {/* Whoever is in front of the class takes the register, so it is here rather than
+                    on a screen of its own that nobody opens between lessons. */}
+                {can('attendance.write') && it.slotId ? <TakeRegister slotId={it.slotId} date={day.date} /> : null}
                 {(user?.role === 'LECTURER' || user?.role === 'MODULE_LEADER') && it.teacher?.id === user.id && <Button size="xs" variant="outline" onClick={() => setAction({ kind: 'TEACHER_ABSENCE', item: it })}>Report absence</Button>}
                 {isStudent && <Button size="xs" variant="outline" onClick={() => setAction({ kind: 'STUDENT_ABSENCE', item: it })}>Request absence</Button>}
                 {/* The room is full of students and nobody has come to teach: one tap tells RTE. */}

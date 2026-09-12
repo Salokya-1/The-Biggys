@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AttendanceCard } from '@/components/attendance-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { OutcomeBadge, SheetStatusBadge, StandingBadge, StatusBadge } from '@/components/status-badges';
@@ -45,6 +46,8 @@ export function StudentProfileView({ profile, forStudent }: { profile: StudentPr
         <Stat label="Resits" value={profile.stats.resits} />
         <Stat label={forStudent ? 'Awaiting publication' : 'Pending'} value={profile.stats.pending} />
       </div>
+
+      <AttendanceCard studentId={s.id} />
 
       {profile.semesters.length === 0 && (
         <Card>
