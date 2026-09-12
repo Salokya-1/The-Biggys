@@ -38,7 +38,16 @@ export function Assistant() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const status = useQuery({ queryKey: ['assistant', 'status'], queryFn: () => api<{ enabled: boolean; model: string }>('/api/assistant/status'), staleTime: 300_000 });
+  // Re-checked when the tab regains focus and every minute while it is open: the answer changes
+  // the moment a key is added on the API, and a five-minute cache made a working assistant look
+  // permanently switched off.
+  const status = useQuery({
+    queryKey: ['assistant', 'status'],
+    queryFn: () => api<{ enabled: boolean; model: string }>('/api/assistant/status'),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: (q) => (q.state.data?.enabled ? false : 60_000),
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
