@@ -19,7 +19,9 @@ services:
     plan: free
     rootDir: backend
     region: oregon
-    buildCommand: npm ci && npx prisma generate && npm run build
+    # --include=dev is required: NODE_ENV=production makes npm ci skip devDependencies, and the
+    # TypeScript compiler and the Prisma CLI both live there.
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
     # Migrations run before the server starts; server.ts runs them again defensively (idempotent).
     startCommand: npx prisma migrate deploy && node dist/server.js
     healthCheckPath: /health/ready
@@ -56,7 +58,7 @@ services:
     plan: free
     rootDir: web
     region: singapore # the web app talks to the API over the public internet, so it can sit anywhere
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build # Next.js needs TypeScript and the type packages to build
     startCommand: npm run start
     autoDeploy: true
     envVars:
