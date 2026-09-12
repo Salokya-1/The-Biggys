@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Armchair, BookOpen, Building2, CalendarDays, CalendarClock, ClipboardCheck, GraduationCap, Inbox, LayoutDashboard, LogOut, Receipt, ShieldCheck, Sun, TriangleAlert, Users, Video } from 'lucide-react';
+import { Armchair, BookOpen, Building2, CalendarDays, CalendarClock, ClipboardCheck, GraduationCap, Inbox, LayoutDashboard, LogOut, Receipt, ShieldCheck, Sun, FileSpreadsheet, TriangleAlert, Users, Video } from 'lucide-react';
 import { Assistant } from '@/components/assistant';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ const NAV: NavItem[] = [
   { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'fees.read' },
   { href: '/retakes', label: 'Retakes', icon: Sun, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'module.read' },
   { href: '/admin/users', label: 'Users', icon: ShieldCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage' },
+  { href: '/import', label: 'Import', icon: FileSpreadsheet, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage' },
   { href: '/me', label: 'My results', icon: GraduationCap, roles: ['STUDENT'] },
   { href: '/me/exams', label: 'My exam seats', icon: Armchair, roles: ['STUDENT'] },
   { href: '/me/fees', label: 'Fees & admit card', icon: Receipt, roles: ['STUDENT'] },

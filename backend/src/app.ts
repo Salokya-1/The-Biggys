@@ -26,6 +26,7 @@ import { moduleOverviewRoutes } from './routes/module-overview';
 import { allocationRoutes } from './routes/allocation';
 import { supportRoutes } from './routes/support';
 import { teacherRoutes } from './routes/teachers';
+import { bulkImportRoutes } from './routes/bulk-import';
 import multipart from '@fastify/multipart';
 
 export async function buildApp() {
@@ -117,6 +118,7 @@ export async function buildApp() {
       await api.register(allocationRoutes);
       await api.register(supportRoutes);
       await api.register(teacherRoutes);
+      await api.register(bulkImportRoutes);
     },
     { prefix: '/api' },
   );
