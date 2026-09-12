@@ -66,10 +66,10 @@ export default function ModulesPage() {
               <TableHead>Module</TableHead>
               <TableHead>Cohort</TableHead>
               <TableHead>Lecturer</TableHead>
-              <TableHead>Assessment</TableHead>
+              <TableHead className="min-w-[12rem]">Assessment</TableHead>
               <TableHead className="text-right">Enrolled</TableHead>
               <TableHead>Mark sheet</TableHead>
-              <TableHead></TableHead>
+              <TableHead className="sticky right-0 bg-background text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -103,9 +103,12 @@ export default function ModulesPage() {
                       <span className="text-muted-foreground">None</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" variant="ghost" className="mr-1" onClick={() => router.push(`/modules/${o.id}/overview`)}>Overview</Button>
-                    <Button size="sm" variant="ghost" className="mr-1" onClick={() => router.push(`/modules/${o.id}/class-list`)}>Class list</Button>
+                  {/* Pinned to the right edge so the actions are always reachable, whatever the
+                      window width does to the columns before them. */}
+                  <TableCell className="sticky right-0 bg-background text-right shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]">
+                    <div className="flex flex-wrap justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => router.push(`/modules/${o.id}/overview`)}>Overview</Button>
+                    <Button size="sm" variant="ghost" onClick={() => router.push(`/modules/${o.id}/class-list`)}>Class list</Button>
                     {hasOpen ? (
                       <Button size="sm" variant="outline" onClick={() => router.push(`/marksheets/${latest.id}`)}>Open</Button>
                     ) : canOpenNew && canCreate(o) && o.components.length > 0 ? (
@@ -113,6 +116,7 @@ export default function ModulesPage() {
                         {latest ? 'New version' : 'Create mark sheet'}
                       </Button>
                     ) : null}
+                    </div>
                   </TableCell>
                 </TableRow>
               );

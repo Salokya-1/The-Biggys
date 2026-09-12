@@ -102,6 +102,11 @@ export default function ExamsPage() {
     },
   });
 
+  // 74 offerings and 52 rooms is too many to hunt through by eye.
+  const [moduleQuery, setModuleQuery] = useState('');
+  const [venueQuery, setVenueQuery] = useState('');
+  const matches = (needle: string, ...hay: (string | number | undefined)[]) =>
+    !needle.trim() || hay.filter(Boolean).join(' ').toLowerCase().includes(needle.trim().toLowerCase());
   const toggle = (key: 'offeringIds' | 'venueIds' | 'sectionIds', id: string, on: boolean) => setForm((f) => ({ ...f, [key]: on ? [...f[key], id] : f[key].filter((x) => x !== id) }));
 
   return (
@@ -173,11 +178,20 @@ export default function ExamsPage() {
             <div className="space-y-1"><Label>Duration (min)</Label><Input type="number" min={15} value={form.durationMin} onChange={(e) => setForm({ ...form, durationMin: Number(e.target.value) })} /></div>
             <div className="space-y-1"><Label>Seed</Label><Input type="number" min={1} value={form.seed} onChange={(e) => setForm({ ...form, seed: Number(e.target.value) })} /></div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Module offerings</Label>
-              <div className="max-h-40 space-y-1 overflow-y-auto border p-2 text-sm">
-                {offerings.data?.map((o) => (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Module offerings</Label>
+                <span className="text-xs text-muted-foreground">{form.offeringIds.length} selected</span>
+              </div>
+              <Input value={moduleQuery} onChange={(e) => setModuleQuery(e.target.value)} placeholder="Search a module by code, title, programme or intake" className="h-8" />
+              <div className="max-h-48 space-y-1 overflow-y-auto border p-2 text-sm">
+                {offerings.data
+                  ?.filter((o) => form.offeringIds.includes(o.id) || matches(moduleQuery, o.module.code, o.module.title, o.semester.intake.programme.code, o.semester.intake.label, `sem ${o.semester.number}`))
+                  .map((o) => (
                   <label key={o.id} className="flex items-center gap-2"><Checkbox checked={form.offeringIds.includes(o.id)} onCheckedChange={(c) => toggle('offeringIds', o.id, !!c)} /><span>{o.module.code} · {o.module.title} — {o.semester.intake.programme.code} {o.semester.intake.label} Sem {o.semester.number} ({o._count.enrollments})</span></label>
-                ))}
+                  ))}
+                {offerings.data && offerings.data.filter((o) => matches(moduleQuery, o.module.code, o.module.title, o.semester.intake.programme.code, o.semester.intake.label)).length === 0 && (
+                  <p className="py-2 text-center text-xs text-muted-foreground">No module matches “{moduleQuery}”.</p>
+                )}
               </div>
             </div>
             {form.kind === 'CLASS_TEST' && sectionOptions.length > 0 && (
@@ -189,9 +203,17 @@ export default function ExamsPage() {
               </div>
             )}
             <div className="space-y-2 sm:col-span-2">
-              <Label>Venues and invigilators</Label>
-              <div className="space-y-1 border p-2 text-sm">
-                {venues.data?.map((v) => (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Venues and invigilators</Label>
+                <span className="text-xs text-muted-foreground">
+                  {form.venueIds.length} selected · {(venues.data ?? []).filter((v) => form.venueIds.includes(v.id)).reduce((n, v) => n + v.capacity, 0)} seats
+                </span>
+              </div>
+              <Input value={venueQuery} onChange={(e) => setVenueQuery(e.target.value)} placeholder="Search a room by name or block" className="h-8" />
+              <div className="max-h-56 space-y-1 overflow-y-auto border p-2 text-sm">
+                {venues.data
+                  ?.filter((v) => form.venueIds.includes(v.id) || matches(venueQuery, v.name, v.building))
+                  .map((v) => (
                   <div key={v.id} className="flex flex-wrap items-center gap-2">
                     <label className="flex flex-1 items-center gap-2"><Checkbox checked={form.venueIds.includes(v.id)} onCheckedChange={(c) => toggle('venueIds', v.id, !!c)} /><span>{v.name} ({v.building}) — capacity {v.capacity}{v.isClassroom ? '' : ' · exam hall'}</span></label>
                     {form.venueIds.includes(v.id) && (
