@@ -4,7 +4,8 @@ import { useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Armchair, BookOpen, Building2, CalendarDays, ClipboardCheck, GraduationCap, LayoutDashboard, LogOut, Users } from 'lucide-react';
+import { Armchair, BookOpen, Building2, CalendarDays, CalendarClock, ClipboardCheck, GraduationCap, Inbox, LayoutDashboard, LogOut, Receipt, Sun, Users } from 'lucide-react';
+import { Assistant } from '@/components/assistant';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,10 +27,15 @@ const NAV: NavItem[] = [
   { href: '/students', label: 'Students', icon: Users, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/modules', label: 'Modules', icon: BookOpen, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/marksheets', label: 'Mark sheets', icon: ClipboardCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { href: '/timetable', label: 'Timetable', icon: CalendarClock, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/exams', label: 'Exams', icon: CalendarDays, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { href: '/requests', label: 'Requests', icon: Inbox, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/venues', label: 'Venues', icon: Building2, roles: ['ADMIN'] },
+  { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN'] },
+  { href: '/retakes', label: 'Retakes', icon: Sun, roles: ['ADMIN'] },
   { href: '/me', label: 'My results', icon: GraduationCap, roles: ['STUDENT'] },
   { href: '/me/exams', label: 'My exam seats', icon: Armchair, roles: ['STUDENT'] },
+  { href: '/me/fees', label: 'Fees & admit card', icon: Receipt, roles: ['STUDENT'] },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -126,6 +132,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
         <main className="flex-1 p-4 md:p-8">{children}</main>
       </div>
+      <Assistant />
     </div>
   );
 }

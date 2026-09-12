@@ -61,7 +61,13 @@ export default function ExamDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{d.session.title}</h1>
-          <p className="text-sm text-muted-foreground">{new Date(d.session.date).toLocaleDateString()} · {d.session.startTime} · {d.session.durationMin} min · {d.candidates} candidates · seed {d.session.seed}</p>
+          <p className="text-sm text-muted-foreground">{new Date(d.session.date).toLocaleDateString()} · {d.session.startTime} · {d.session.durationMin} min · {d.candidates} candidates · seed {d.session.seed}{d.session.kind ? ` · ${d.session.kind.replace('_', ' ').toLowerCase()}` : ''}{d.session.seatingMode === 'BY_ID' ? ' · seated by section in ascending ID order' : ''}</p>
+          {(d.session.invigilators?.length || d.session.sections?.length) ? (
+            <p className="text-xs text-muted-foreground">
+              {d.session.sections?.length ? `Sections ${d.session.sections.map((s) => s.name).join(', ')} · ` : ''}
+              {d.session.invigilators?.length ? `Invigilators: ${d.session.invigilators.map((i) => `${i.user.name} (${i.venue.name})`).join(', ')}` : 'No invigilators assigned'}
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
             {modules.map((m, i) => <Badge key={m} variant="outline" className={cn('border-transparent', MODULE_PALETTE[i % MODULE_PALETTE.length])}>{m}</Badge>)}
             <Badge variant="outline">◆ special needs</Badge>

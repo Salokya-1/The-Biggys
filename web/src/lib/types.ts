@@ -250,6 +250,7 @@ export interface Venue {
   cols: number;
   disabledSeats: { row: number; col: number }[];
   adjacencyMode: 'ROW' | 'ROW_AND_COLUMN';
+  isClassroom: boolean;
   capacity: number;
   _count?: { examSessions: number };
 }
@@ -287,7 +288,20 @@ export interface SeatAllocationView {
 }
 
 export interface ExamDetail {
-  session: { id: string; title: string; date: string; startTime: string; durationMin: number; seed: number; offerings: ExamOffering[] };
+  session: {
+    id: string;
+    title: string;
+    kind?: 'FINAL' | 'CLASS_TEST' | 'RESIT';
+    seatingMode?: 'MIXED' | 'BY_ID';
+    date: string;
+    startTime: string;
+    durationMin: number;
+    seed: number;
+    offerings: ExamOffering[];
+    sections?: { id: string; name: string }[];
+    invigilators?: { user: { id: string; name: string }; venue: { id: string; name: string } }[];
+    generatedBy?: string | null;
+  };
   venues: (Omit<Venue, '_count'> & { used: number; violations: number })[];
   allocations: SeatAllocationView[];
   candidates: number;
