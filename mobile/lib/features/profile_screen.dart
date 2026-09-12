@@ -61,6 +61,13 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ]),
         ),
+        if (user.isStaff)
+          ListTile(
+            leading: const Icon(Icons.event_busy_outlined),
+            title: const Text('My availability'),
+            subtitle: const Text('Hours you cannot be given a class'),
+            onTap: () => context.push('/availability'),
+          ),
         ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('API settings'), subtitle: Text(baseUrl), onTap: () => context.push('/settings')),
         ListTile(leading: const Icon(Icons.logout), title: const Text('Sign out'), onTap: () => ref.read(authProvider.notifier).logout()),
         const SizedBox(height: 16),
