@@ -124,19 +124,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center justify-between gap-3 bg-sidebar px-4 py-3 text-sidebar-foreground md:hidden">
+        <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 bg-sidebar px-4 py-2 text-sidebar-foreground md:hidden">
           <span className="flex items-center gap-2">
             <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={160} height={37} className="h-9 w-auto" />
             <Image src="/brand/kramiq-square.png" alt="KramIQ" width={72} height={72} className="h-8 w-8 rounded bg-white p-0.5" />
           </span>
-          <div className="flex flex-wrap items-center gap-3">
-            {items.map((n) => (
-              <Link key={n.href} href={n.href} className="text-xs underline-offset-4 hover:underline">
-                {n.label}
-              </Link>
-            ))}
-            <ThemeToggle inverse className="h-7 px-1 [&_span]:hidden" />
-            <button className="text-xs opacity-80" onClick={() => logout().then(() => router.replace('/login'))}>
+          {/* One scrollable row rather than a wrapping block: on a narrow screen the wrapped list
+              pushed the page content most of the way down the viewport. */}
+          <div className="flex min-w-0 items-center gap-2">
+            <nav className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {items.map((n) => {
+                const active = pathname === n.href || (n.href !== '/me' && pathname.startsWith(n.href + '/'));
+                return (
+                  <Link
+                    key={n.href}
+                    href={n.href}
+                    className={cn('shrink-0 rounded px-2 py-1 text-xs', active ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/85')}
+                  >
+                    {n.label}
+                  </Link>
+                );
+              })}
+            </nav>
+            <ThemeToggle inverse className="h-7 shrink-0 px-1 [&_span]:hidden" />
+            <button className="shrink-0 text-xs opacity-80" onClick={() => logout().then(() => router.replace('/login'))}>
               Sign out
             </button>
           </div>
