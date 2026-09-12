@@ -27,6 +27,14 @@ export async function buildApp() {
     allowList: (req) => req.url.startsWith('/health'),
   });
 
+  app.get('/', async () => ({
+    service: 'the-biggys-api',
+    description: 'RTE Integrated Management System API — The Biggys, Islington Hackathon 2026',
+    health: '/health',
+    ready: '/health/ready',
+    version: '/health/version',
+  }));
+
   await app.register(healthRoutes);
 
   app.setErrorHandler((err: FastifyError, req, reply) => {
