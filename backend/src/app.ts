@@ -12,6 +12,8 @@ import { authRoutes } from './routes/auth';
 import { programmeRoutes } from './routes/programmes';
 import { moduleRoutes } from './routes/modules';
 import { studentRoutes } from './routes/students';
+import { markSheetRoutes } from './routes/marksheets';
+import multipart from '@fastify/multipart';
 
 export async function buildApp() {
   const app = Fastify({
@@ -29,6 +31,7 @@ export async function buildApp() {
     origin: config.CORS_ORIGIN.split(',').map((o) => o.trim()),
     credentials: true,
   });
+  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
   await app.register(rateLimit, {
     max: 300,
     timeWindow: '1 minute',
@@ -82,6 +85,7 @@ export async function buildApp() {
       await api.register(programmeRoutes);
       await api.register(moduleRoutes);
       await api.register(studentRoutes);
+      await api.register(markSheetRoutes);
     },
     { prefix: '/api' },
   );
