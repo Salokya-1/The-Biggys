@@ -29,6 +29,9 @@ import { teacherRoutes } from './routes/teachers';
 import { bulkImportRoutes } from './routes/bulk-import';
 import multipart from '@fastify/multipart';
 
+/** Where the app is served from in production. Always accepted, whatever CORS_ORIGIN says. */
+const PUBLIC_ORIGINS = ['https://kramiq.tech', 'https://www.kramiq.tech', 'https://biggys-web.onrender.com'];
+
 export async function buildApp() {
   const app = Fastify({
     logger: {
@@ -42,7 +45,10 @@ export async function buildApp() {
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, {
-    origin: config.CORS_ORIGIN.split(',').map((o) => o.trim()),
+    // The site answers on its own domain as well as the Render subdomain, and both must keep
+    // working. Those hostnames are public, not configuration, so they are always allowed —
+    // CORS_ORIGIN adds to the list rather than replacing it.
+    origin: [...new Set([...config.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean), ...PUBLIC_ORIGINS])],
     credentials: true,
   });
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
