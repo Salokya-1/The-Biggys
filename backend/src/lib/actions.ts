@@ -45,6 +45,12 @@ export const ACTIONS = [
   { key: 'camera.read', label: 'See camera access requests', group: 'Exams', roles: ['ADMIN', 'MODULE_LEADER'] },
   { key: 'camera.request', label: 'Ask IT support for camera access', group: 'Exams', roles: ['ADMIN'] },
   { key: 'assistant.use', label: 'Use the AI assistant', group: 'Administration', roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
+  { key: 'broadcast.send', label: 'Announce to everyone at once', group: 'Administration', roles: ['ADMIN'] },
+  { key: 'attendance.read', label: 'See attendance and who is at risk of falling short', group: 'Records', roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { key: 'attendance.write', label: 'Mark a register', group: 'Records', roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { key: 'message.use', label: 'Message people inside the system', group: 'Administration', roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
+  { key: 'query.raise', label: 'Put a query to the RTE office', group: 'Administration', roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
+  { key: 'query.answer', label: 'Answer queries', group: 'Administration', roles: ['ADMIN', 'MODULE_LEADER'] },
 ] as const satisfies readonly { key: string; label: string; group: string; roles: readonly Role[] }[];
 
 export type Action = (typeof ACTIONS)[number]['key'];

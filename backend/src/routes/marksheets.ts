@@ -59,7 +59,11 @@ async function applyMarks(
     const c = componentById.get(m.componentId);
     if (!c) throw badRequest(`Unknown component ${m.componentId}`);
     if (!enrollmentIds.has(m.enrollmentId)) throw badRequest(`Enrollment ${m.enrollmentId} is not on this offering`);
-    if (m.rawMark !== null && m.rawMark > c.maxMark) throw badRequest(`${c.name}: ${m.rawMark} exceeds max ${c.maxMark}`);
+    // A component is marked out of its own maximum, so 104 on a paper out of 100 is a typo, not a
+    // result — and a negative is never one. Caught here as well as in the grid, because an import
+    // or a direct call does not go through the grid.
+    if (m.rawMark !== null && m.rawMark > c.maxMark) throw badRequest(`${c.name} is marked out of ${c.maxMark} — ${m.rawMark} is not a possible mark`);
+    if (m.rawMark !== null && m.rawMark < 0) throw badRequest(`${c.name}: ${m.rawMark} is below zero`);
     const rawMark = m.isAbsent ? null : m.rawMark;
     const prev = existing.get(`${m.enrollmentId}:${m.componentId}`);
     const before = prev ? { rawMark: prev.rawMark === null ? null : Number(prev.rawMark), isAbsent: prev.isAbsent } : null;

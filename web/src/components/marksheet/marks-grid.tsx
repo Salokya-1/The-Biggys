@@ -3,9 +3,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Save, Undo2 } from 'lucide-react';
+import { Save, TriangleAlert, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -64,6 +65,28 @@ export function MarksGrid({ detail }: { detail: MarkSheetDetail }) {
     },
   });
 
+  /**
+   * Marks that cannot be real.
+   *
+   * A component is marked out of its own maximum, so 104 on a paper out of 100 is a slipped digit
+   * and a negative is a stray minus. Both are caught as they are typed rather than at save, when
+   * the person has moved on and the message names an id they cannot see.
+   */
+  const impossible = useMemo(() => {
+    const out: { name: string; studentId: string; component: string; value: number; maxMark: number }[] = [];
+    for (const r of rows) {
+      for (const c of offering.components) {
+        const v = cellValue(r.enrollmentId, c.id);
+        if (v.isAbsent || v.rawMark === null) continue;
+        if (v.rawMark > c.maxMark || v.rawMark < 0) {
+          out.push({ name: r.student.name, studentId: r.student.studentId, component: c.name, value: v.rawMark, maxMark: c.maxMark });
+        }
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, edits, offering.components]);
+
   /** Client-side overall preview so lecturers see the effect before saving. */
   const preview = useMemo(() => {
     const out: Record<string, number | null> = {};
@@ -88,6 +111,24 @@ export function MarksGrid({ detail }: { detail: MarkSheetDetail }) {
 
   return (
     <div className="space-y-3">
+      {impossible.length > 0 && (
+        <Alert variant="destructive">
+          <TriangleAlert className="h-4 w-4" />
+          <AlertTitle>{impossible.length} mark{impossible.length === 1 ? '' : 's'} cannot be right</AlertTitle>
+          <AlertDescription>
+            <ul className="mt-1 list-disc pl-4 text-xs">
+              {impossible.slice(0, 8).map((b, i) => (
+                <li key={i}>
+                  {b.studentId} {b.name} — {b.component} is out of {b.maxMark}, but {b.value} was entered
+                </li>
+              ))}
+              {impossible.length > 8 && <li>…and {impossible.length - 8} more</li>}
+            </ul>
+            <p className="mt-1 text-xs">Saving is held until these are corrected.</p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           {editable ? 'Enter marks per component, or tick Abs for absent. Overall updates live; grade and outcome are computed on save.' : `Read-only: the sheet is ${sheet.status.replace('_', ' ')}.`}
@@ -95,7 +136,7 @@ export function MarksGrid({ detail }: { detail: MarkSheetDetail }) {
         {editable && (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" disabled={!dirty} onClick={() => setEdits({})}><Undo2 className="mr-1 h-4 w-4" /> Discard</Button>
-            <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}><Save className="mr-1 h-4 w-4" /> Save {dirty ? `(${dirty})` : ''}</Button>
+            <Button size="sm" disabled={!dirty || save.isPending || impossible.length > 0} onClick={() => save.mutate()}><Save className="mr-1 h-4 w-4" /> Save {dirty ? `(${dirty})` : ''}</Button>
           </div>
         )}
       </div>
@@ -151,6 +192,7 @@ export function MarksGrid({ detail }: { detail: MarkSheetDetail }) {
                               setCell(r.enrollmentId, c.id, { rawMark: raw, isAbsent: false });
                             }}
                           />
+                          {invalid && <span className="text-xs font-medium text-destructive">out of {c.maxMark}</span>}
                           <label className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Checkbox
                               disabled={!editable}

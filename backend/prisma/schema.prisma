@@ -143,6 +143,12 @@ model User {
   taughtSlots         TimetableSlot[]         @relation("SlotTeacher")
   coverSlots          SlotException[]         @relation("ExceptionTeacher")
   requests            ChangeRequest[]         @relation("Requester")
+  broadcasts          Broadcast[]             @relation("BroadcastSender")
+  sentMessages        DirectMessage[]         @relation("MessageFrom")
+  receivedMessages    DirectMessage[]         @relation("MessageTo")
+  raisedQueries       QueryTicket[]           @relation("QueryRaisedBy")
+  answeredQueries     QueryTicket[]           @relation("QueryAnsweredBy")
+  markedAttendance    AttendanceRecord[]      @relation("AttendanceMarkedBy")
   decidedRequests     ChangeRequest[]         @relation("Decider")
   invigilations       ExamInvigilator[]
 }
@@ -170,9 +176,10 @@ model Programme {
   name  String
   level String
 
-  intakes  Intake[]
-  modules  Module[]
-  students Student[]
+  intakes    Intake[]
+  modules    Module[]
+  students   Student[]
+  broadcasts Broadcast[]
 }
 
 model Intake {
@@ -201,13 +208,14 @@ model Semester {
   examStart     DateTime? // defaults to startDate + teachingWeeks
   examEnd       DateTime? // defaults to examStart + 2 weeks
 
-  intake          Intake           @relation(fields: [intakeId], references: [id])
+  intake          Intake             @relation(fields: [intakeId], references: [id])
   offerings       ModuleOffering[]
-  currentStudents Student[]        @relation("CurrentSemester")
+  currentStudents Student[]          @relation("CurrentSemester")
   slots           TimetableSlot[]
   examSessions    ExamSession[]
   feeInvoices     FeeInvoice[]
   admitCards      AdmitCard[]
+  attendance      AttendanceRecord[]
 
   @@unique([intakeId, number])
 }
@@ -245,16 +253,17 @@ model Student {
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 
-  user            User?            @relation(fields: [userId], references: [id])
-  programme       Programme        @relation(fields: [programmeId], references: [id])
-  intake          Intake           @relation(fields: [intakeId], references: [id])
-  section         Section?         @relation(fields: [sectionId], references: [id])
-  currentSemester Semester?        @relation("CurrentSemester", fields: [currentSemesterId], references: [id])
-  enrollments     Enrollment[]
-  supportClasses  SupportClass[]   @relation("SupportClassStudents")
-  seatAllocations SeatAllocation[]
-  feeInvoices     FeeInvoice[]
-  admitCards      AdmitCard[]
+  user              User?              @relation(fields: [userId], references: [id])
+  programme         Programme          @relation(fields: [programmeId], references: [id])
+  intake            Intake             @relation(fields: [intakeId], references: [id])
+  section           Section?           @relation(fields: [sectionId], references: [id])
+  currentSemester   Semester?          @relation("CurrentSemester", fields: [currentSemesterId], references: [id])
+  enrollments       Enrollment[]
+  supportClasses    SupportClass[]     @relation("SupportClassStudents")
+  seatAllocations   SeatAllocation[]
+  feeInvoices       FeeInvoice[]
+  admitCards        AdmitCard[]
+  attendanceRecords AttendanceRecord[]
 
   @@index([programmeId, intakeId, status])
   @@index([sectionId])
@@ -287,17 +296,18 @@ model ModuleOffering {
   // Every module is staffed by two teachers; sections are shared between them.
   coLecturerId String?
 
-  module          Module                @relation(fields: [moduleId], references: [id])
-  semester        Semester              @relation(fields: [semesterId], references: [id])
-  lecturer        User?                 @relation("OfferingLecturer", fields: [lecturerId], references: [id])
-  coLecturer      User?                 @relation("OfferingCoLecturer", fields: [coLecturerId], references: [id])
-  components      AssessmentComponent[]
-  enrollments     Enrollment[]
-  markSheets      MarkSheet[]
-  examSessions    ExamSession[]
-  seatAllocations SeatAllocation[]
-  slots           TimetableSlot[]
-  supportClasses  SupportClass[]
+  module            Module                @relation(fields: [moduleId], references: [id])
+  semester          Semester              @relation(fields: [semesterId], references: [id])
+  lecturer          User?                 @relation("OfferingLecturer", fields: [lecturerId], references: [id])
+  coLecturer        User?                 @relation("OfferingCoLecturer", fields: [coLecturerId], references: [id])
+  components        AssessmentComponent[]
+  enrollments       Enrollment[]
+  markSheets        MarkSheet[]
+  examSessions      ExamSession[]
+  seatAllocations   SeatAllocation[]
+  slots             TimetableSlot[]
+  supportClasses    SupportClass[]
+  attendanceRecords AttendanceRecord[]
 
   @@unique([moduleId, semesterId])
 }
@@ -454,18 +464,19 @@ model TimetableSlot {
   weekTo           Int       @default(12)
   createdAt        DateTime  @default(now())
 
-  semester       Semester              @relation(fields: [semesterId], references: [id])
-  section        Section               @relation(fields: [sectionId], references: [id])
-  moduleOffering ModuleOffering        @relation(fields: [moduleOfferingId], references: [id])
-  teacher        User                  @relation("SlotTeacher", fields: [teacherId], references: [id])
-  venue          Venue?                @relation(fields: [venueId], references: [id])
-  exceptions     SlotException[]
-  requests       ChangeRequest[]
-  cameraRequests CameraAccessRequest[] @relation("SlotCameraRequests")
-  alerts         ClassAlert[]
+  semester          Semester              @relation(fields: [semesterId], references: [id])
+  section           Section               @relation(fields: [sectionId], references: [id])
+  moduleOffering    ModuleOffering        @relation(fields: [moduleOfferingId], references: [id])
+  teacher           User                  @relation("SlotTeacher", fields: [teacherId], references: [id])
+  venue             Venue?                @relation(fields: [venueId], references: [id])
+  exceptions        SlotException[]
+  requests          ChangeRequest[]
+  cameraRequests    CameraAccessRequest[] @relation("SlotCameraRequests")
+  alerts            ClassAlert[]
   /// Every group in the room. A lecture combines the whole cohort (C1+C2+…); a tutorial or
   /// workshop has the one group in `section`.
-  groups         Section[]             @relation("SlotGroups")
+  groups            Section[]             @relation("SlotGroups")
+  attendanceRecords AttendanceRecord[]
 
   @@index([semesterId, sectionId])
   @@index([teacherId, dayOfWeek])
@@ -826,4 +837,109 @@ model TeacherUnavailability {
   teacher User @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
   @@index([teacherId, dayOfWeek])
+}
+
+/// Who an announcement goes to.
+enum BroadcastAudience {
+  EVERYONE
+  STUDENTS
+  STAFF
+  PROGRAMME
+}
+
+/// One announcement from RTE, fanned out to a notification per recipient.
+///
+/// The announcement is kept in its own right so the alerts page can show what was said, to whom
+/// and when, long after the individual notifications have been read and cleared.
+model Broadcast {
+  id          String            @id @default(cuid())
+  senderId    String
+  audience    BroadcastAudience
+  programmeId String?
+  title       String
+  body        String
+  recipients  Int               @default(0)
+  createdAt   DateTime          @default(now())
+
+  sender    User       @relation("BroadcastSender", fields: [senderId], references: [id])
+  programme Programme? @relation(fields: [programmeId], references: [id])
+
+  @@index([createdAt])
+}
+
+/// Whether a student was in the room.
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+/// One student, one class, one day.
+model AttendanceRecord {
+  id         String           @id @default(cuid())
+  studentId  String
+  slotId     String
+  offeringId String
+  date       DateTime         @db.Date
+  status     AttendanceStatus
+  markedById String?
+  createdAt  DateTime         @default(now())
+
+  student    Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  slot       TimetableSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  offering   ModuleOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  markedBy   User?          @relation("AttendanceMarkedBy", fields: [markedById], references: [id])
+  semester   Semester?      @relation(fields: [semesterId], references: [id])
+  semesterId String?
+
+  @@unique([studentId, slotId, date])
+  @@index([offeringId, date])
+  @@index([studentId, status])
+}
+
+/// A message from one person to another inside the system.
+///
+/// Deliberately a flat table rather than threads and conversations: the whole feature is "find a
+/// person, say something to them", and a thread is just the messages between two ids.
+model DirectMessage {
+  id        String    @id @default(cuid())
+  fromId    String
+  toId      String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  from User @relation("MessageFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to   User @relation("MessageTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@index([toId, readAt])
+  @@index([fromId, toId, createdAt])
+}
+
+/// Where a query sits.
+enum QueryStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+/// A question put to RTE that is not a request for a decision — "when do resits open?".
+model QueryTicket {
+  id           String      @id @default(cuid())
+  raisedById   String
+  category     String
+  subject      String
+  body         String
+  status       QueryStatus @default(OPEN)
+  answer       String?
+  answeredById String?
+  answeredAt   DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  raisedBy   User  @relation("QueryRaisedBy", fields: [raisedById], references: [id], onDelete: Cascade)
+  answeredBy User? @relation("QueryAnsweredBy", fields: [answeredById], references: [id])
+
+  @@index([status, createdAt])
 }

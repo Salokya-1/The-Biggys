@@ -27,6 +27,10 @@ import { allocationRoutes } from './routes/allocation';
 import { supportRoutes } from './routes/support';
 import { teacherRoutes } from './routes/teachers';
 import { bulkImportRoutes } from './routes/bulk-import';
+import { broadcastRoutes } from './routes/broadcast';
+import { attendanceRoutes } from './routes/attendance';
+import { messageRoutes } from './routes/messages';
+import { queryRoutes } from './routes/queries';
 import multipart from '@fastify/multipart';
 
 /** Where the app is served from in production. Always accepted, whatever CORS_ORIGIN says. */
@@ -125,6 +129,10 @@ export async function buildApp() {
       await api.register(supportRoutes);
       await api.register(teacherRoutes);
       await api.register(bulkImportRoutes);
+      await api.register(broadcastRoutes);
+      await api.register(attendanceRoutes);
+      await api.register(messageRoutes);
+      await api.register(queryRoutes);
     },
     { prefix: '/api' },
   );
