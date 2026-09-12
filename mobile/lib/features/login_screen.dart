@@ -39,10 +39,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final baseUrl = ref.watch(apiBaseUrlProvider).value ?? kDefaultApiUrl;
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign in'), actions: [const ThemeToggleButton(), IconButton(icon: const Icon(Icons.settings), onPressed: () => context.push('/settings'))]),
+      appBar: AppBar(title: const Text('KramIQ'), actions: [const ThemeToggleButton(), IconButton(icon: const Icon(Icons.settings), onPressed: () => context.push('/settings'))]),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        Center(child: Image.asset('assets/brand/kramiq.png', height: 132, fit: BoxFit.contain)),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        // The mark carries the name, so it is given room rather than squeezed into the app bar.
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320, maxHeight: 200),
+            child: Image.asset('assets/brand/kramiq.png', fit: BoxFit.contain),
+          ),
+        ),
+        const SizedBox(height: 16),
         const Text('RTE Integrated Management System', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         Text('Islington College · $baseUrl', style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 20),

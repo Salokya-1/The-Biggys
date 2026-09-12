@@ -65,7 +65,7 @@ export default function LoginPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="text-xl">Sign in to KramIQ</CardTitle>
-            <CardDescription>RTE Integrated Management System · Islington College</CardDescription>
+            <CardDescription>KramIQ · RTE Integrated Management System · Islington College</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-4">

@@ -24,7 +24,11 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <header className="bg-sidebar text-sidebar-foreground">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto" />
+          <span className="flex min-w-0 items-center gap-3">
+            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto shrink-0" />
+            <span className="h-8 w-px shrink-0 bg-sidebar-border" />
+            <Image src="/brand/kramiq-square.png" alt="KramIQ by The Biggys" width={80} height={80} priority className="h-10 w-10 shrink-0" />
+          </span>
           <div className="flex items-center gap-2">
             <ThemeToggle inverse />
             <Button size="sm" className="bg-brand-orange text-white hover:bg-brand-orange/90" render={<Link href="/login" />}>
@@ -35,9 +39,20 @@ export default function Home() {
       </header>
 
       <main className="mx-auto flex max-w-5xl flex-col gap-10 px-6 py-14">
-        <section className="flex flex-col gap-3">
+        <section className="flex flex-col items-center gap-3 text-center sm:items-start sm:text-left">
+          {/* The mark is the first thing on the page: it is the name people will remember. */}
+          <Image
+            src="/brand/kramiq.png"
+            alt="KramIQ by The Biggys"
+            width={823}
+            height={787}
+            priority
+            className="h-40 w-auto max-w-full sm:h-56"
+          />
           <p className="text-xs font-semibold uppercase tracking-widest text-brand-blue">Islington Hackathon 2026 · Team The Biggys</p>
-          <h1 className="text-4xl font-bold uppercase tracking-tight text-primary sm:text-5xl">RTE Integrated Management System</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-primary sm:text-5xl">
+            KramIQ <span className="block text-2xl font-semibold uppercase tracking-tight text-muted-foreground sm:text-3xl">RTE Integrated Management System</span>
+          </h1>
           <p className="max-w-2xl text-lg text-muted-foreground">
             One source of truth for student records, result processing and examination seating — replacing the RTE Department&apos;s isolated
             spreadsheets with a validated, approval-gated, auditable workflow.
