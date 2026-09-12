@@ -1,9 +1,17 @@
+import { STATUS_CODES } from 'node:http';
 import Fastify, { type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import { Prisma } from '@prisma/client';
 import { config, isProd } from './config';
+import { HttpError } from './lib/errors';
+import { authenticate } from './plugins/auth';
 import { healthRoutes } from './routes/health';
+import { authRoutes } from './routes/auth';
+import { programmeRoutes } from './routes/programmes';
+import { moduleRoutes } from './routes/modules';
+import { studentRoutes } from './routes/students';
 
 export async function buildApp() {
   const app = Fastify({
@@ -35,16 +43,48 @@ export async function buildApp() {
     version: '/health/version',
   }));
 
-  await app.register(healthRoutes);
+  // Error handler must be set before routes are registered so child contexts inherit it.
+  app.setErrorHandler((err: FastifyError | HttpError | Error, req, reply) => {
+    let status = (err as FastifyError).statusCode ?? 500;
+    let message = err.message;
+    let details: unknown = err instanceof HttpError ? err.details : undefined;
 
-  app.setErrorHandler((err: FastifyError, req, reply) => {
-    const status = err.statusCode ?? 500;
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === 'P2002') {
+        status = 409;
+        message = 'A record with the same unique value already exists';
+        details = { fields: (err.meta?.target as string[] | undefined) ?? [] };
+      } else if (err.code === 'P2025') {
+        status = 404;
+        message = 'Record not found';
+      } else if (err.code === 'P2003') {
+        status = 409;
+        message = 'Operation violates a relationship constraint';
+        details = { field: err.meta?.field_name };
+      }
+    }
     if (status >= 500) req.log.error({ err }, 'unhandled error');
     reply.code(status).send({
-      error: status >= 500 && isProd ? 'Internal Server Error' : err.message,
       statusCode: status,
+      error: STATUS_CODES[status] ?? 'Error',
+      message: status >= 500 && isProd ? 'Internal Server Error' : message,
+      ...(details !== undefined ? { details } : {}),
     });
   });
+
+  await app.register(healthRoutes);
+  await app.register(authRoutes, { prefix: '/auth' });
+
+  // Everything under /api requires a valid token (deny by default); roles are checked per route.
+  await app.register(
+    async (api) => {
+      api.addHook('preHandler', authenticate);
+      await api.register(programmeRoutes);
+      await api.register(moduleRoutes);
+      await api.register(studentRoutes);
+    },
+    { prefix: '/api' },
+  );
 
   return app;
 }
