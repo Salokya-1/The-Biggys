@@ -1,4 +1,6 @@
-# The Biggys — RTE Integrated Management System
+# KramIQ — RTE Integrated Management System
+
+<img src="web/public/brand/kramiq.png" alt="KramIQ by The Biggys" width="260">
 
 **Islington Hackathon 2026 · Problem Statement 2: "Smarter Systems, Stronger Records"**
 
