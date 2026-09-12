@@ -45,16 +45,26 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-4">
+    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-4 py-10">
+      {/* A soft brand wash behind the card, so the page is not a form floating on flat grey. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -left-24 -top-24 h-96 w-96 rounded-full bg-brand-indigo/15 blur-3xl" />
+        <div className="absolute -bottom-32 -right-24 h-[28rem] w-[28rem] rounded-full bg-brand-blue/15 blur-3xl" />
+      </div>
+
       <div className="w-full max-w-md space-y-4">
-        <div className="flex items-center justify-between">
-          <Image src="/brand/islington-logo.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto dark:hidden" />
-          <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="hidden h-10 w-auto dark:block" />
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-3">
+            <Image src="/brand/islington-logo.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto dark:hidden" />
+            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="hidden h-10 w-auto dark:block" />
+            <span className="h-8 w-px shrink-0 bg-border" />
+            <Image src="/brand/kramiq-square.png" alt="KramIQ by The Biggys" width={80} height={80} priority className="h-10 w-10 shrink-0" />
+          </span>
           <ThemeToggle />
         </div>
-        <Card>
+        <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="text-xl">Sign in</CardTitle>
+            <CardTitle className="text-xl">Sign in to KramIQ</CardTitle>
             <CardDescription>RTE Integrated Management System · Islington College</CardDescription>
           </CardHeader>
           <CardContent>

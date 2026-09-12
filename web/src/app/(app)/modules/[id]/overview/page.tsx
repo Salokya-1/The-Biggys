@@ -306,7 +306,7 @@ function AtRiskPanel({ offeringId }: { offeringId: string }) {
       ) : null}
 
       <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Support class for {students.length} students</DialogTitle>
             <DialogDescription>

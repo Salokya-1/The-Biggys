@@ -102,7 +102,7 @@ export async function requestRoutes(app: FastifyInstance) {
   });
 
   app.get('/requests', async (req) => {
-    const { status } = parse(z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional() }), req.query);
+    const { status } = parse(z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional() }), req.query);
     const u = req.user!;
     const mine = u.role === 'STUDENT' || u.role === 'LECTURER';
     return prisma.changeRequest.findMany({
@@ -113,11 +113,35 @@ export async function requestRoutes(app: FastifyInstance) {
     });
   });
 
+  /**
+   * Withdraw your own request.
+   *
+   * People change their minds, and an approver's queue should not fill with requests nobody needs
+   * any more. Only the person who raised it can withdraw it, and only while it is undecided —
+   * once it is approved or rejected it stays on the record.
+   */
+  app.post('/requests/:id/cancel', async (req) => {
+    const { id } = parse(idParam, req.params);
+    const r = await prisma.changeRequest.findUnique({ where: { id }, include });
+    if (!r) throw notFound('Request not found');
+    const u = req.user!;
+    if (r.requesterId !== u.id) throw forbidden('You can only withdraw a request you made');
+    if (r.status !== 'PENDING') throw conflict(`That request has already been ${r.status.toLowerCase()}`);
+    const after = await prisma.changeRequest.update({ where: { id }, data: { status: 'CANCELLED', decidedAt: new Date() }, include });
+    await audit(prisma, { ...actorOf(req), action: 'request.cancel', entityType: 'ChangeRequest', entityId: id, before: { status: 'PENDING' }, after: { status: 'CANCELLED' } });
+    // Tell whoever was holding it, so it disappears from their queue rather than going stale.
+    const tell = [r.slot?.teacher?.id].filter((x): x is string => Boolean(x));
+    if (tell.length) await notifyUsers(prisma, tell, { type: 'request.cancelled', title: `Withdrawn: ${u.name}'s absence request`, body: `${u.name} has withdrawn the request for ${r.slot?.moduleOffering.module.code ?? 'a class'}.`, payload: { requestId: id } });
+    await notifyRole(prisma, 'ADMIN', { type: 'request.cancelled', title: `Withdrawn: request from ${u.name}`, body: 'No action needed.', payload: { requestId: id } });
+    return after;
+  });
+
   app.post('/requests/:id/decide', { preHandler: [requireRole('ADMIN', 'MODULE_LEADER', 'LECTURER')] }, async (req) => {
     const { id } = parse(idParam, req.params);
     const body = parse(decideBody, req.body);
     const r = await prisma.changeRequest.findUnique({ where: { id }, include: { ...include, requester: { select: { id: true, name: true, role: true, student: { select: { id: true, studentId: true, sectionId: true, section: { select: { name: true } } } } } } } });
     if (!r) throw notFound('Request not found');
+    if (r.status === 'CANCELLED') throw conflict('That request was withdrawn by the person who made it');
     // A lecturer may only decide an absence from their own class; everything else is RTE's.
     if (req.user!.role === 'LECTURER' && !(r.kind === 'STUDENT_ABSENCE' && r.slot?.teacher?.id === req.user!.id)) {
       throw forbidden('You can only decide absences from your own classes');

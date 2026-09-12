@@ -81,7 +81,7 @@ export default function MyFeesPage() {
       ))}
 
       <Dialog open={!!paying} onOpenChange={(o) => !o && setPaying(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader><DialogTitle>Pay semester fee</DialogTitle><DialogDescription>{paying ? `${paying.currency} ${paying.amount.toLocaleString()} for Semester ${paying.semester.number}. Demo gateway — no real money moves.` : ''}</DialogDescription></DialogHeader>
           <Select value={method} onValueChange={(v) => setMethod(v ?? 'eSewa')} items={METHODS}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(METHODS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select>
           <DialogFooter><Button variant="outline" onClick={() => setPaying(null)}>Cancel</Button><Button disabled={pay.isPending} onClick={() => paying && pay.mutate(paying)}>{pay.isPending ? 'Paying…' : 'Pay now'}</Button></DialogFooter>

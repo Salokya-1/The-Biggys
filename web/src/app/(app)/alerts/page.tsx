@@ -127,7 +127,7 @@ export default function ClassAlertsPage() {
       </Card>
 
       <Dialog open={!!assign} onOpenChange={(o) => !o && setAssign(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Assign cover</DialogTitle>
             <DialogDescription>

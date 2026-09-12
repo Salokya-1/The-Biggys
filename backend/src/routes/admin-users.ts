@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -74,6 +76,24 @@ function shape(u: Row) {
 
 /** User administration: create staff and students, change roles, and toggle any single capability. */
 export async function adminUserRoutes(app: FastifyInstance) {
+  /**
+   * Rebuild the demo data.
+   *
+   * The seed runs by itself only on an empty database, which leaves a deployed demo frozen on
+   * whatever it was first given. This replaces it. It is destructive by design, so it is admin
+   * only and the caller has to say so in as many words — there is no way to fire it by accident.
+   */
+  app.post('/admin/reseed', { preHandler: [allow('users.manage')] }, async (req) => {
+    const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
+    if (confirm !== 'REPLACE ALL DEMO DATA') throw badRequest('Send confirm: "REPLACE ALL DEMO DATA" to rebuild the demo data. Everything currently in the database is deleted.');
+    const before = await prisma.user.count();
+    const started = Date.now();
+    const tsx = path.join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    execFileSync(process.execPath, [tsx, path.join('prisma', 'seed.ts')], { stdio: 'inherit', env: process.env, cwd: process.cwd(), timeout: 10 * 60_000 });
+    const after = await prisma.user.count();
+    return { ok: true, usersBefore: before, usersAfter: after, seconds: Math.round((Date.now() - started) / 1000) };
+  });
+
   /** The full capability catalogue plus the role defaults, so the UI can render the switch board. */
   app.get('/admin/actions', { preHandler: [allow('users.manage')] }, async () => ({
     actions: ACTIONS.map((a) => ({ key: a.key, label: a.label, group: a.group, roles: a.roles })),

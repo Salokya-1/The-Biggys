@@ -96,6 +96,8 @@ enum RequestStatus {
   PENDING
   APPROVED
   REJECTED
+  /// Withdrawn by the person who raised it, before anyone decided.
+  CANCELLED
 }
 
 enum FeeStatus {

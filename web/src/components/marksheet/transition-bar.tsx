@@ -74,7 +74,7 @@ export function TransitionBar({ detail }: { detail: MarkSheetDetail }) {
       ))}
 
       <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{current?.label}</DialogTitle>
             <DialogDescription>{current?.describe}</DialogDescription>

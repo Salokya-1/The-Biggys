@@ -21,7 +21,8 @@ interface Req {
   kind: 'TEACHER_ABSENCE' | 'STUDENT_ABSENCE' | 'SECTION_SWAP';
   date: string;
   reason: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  requesterId?: string;
   createdAt: string;
   decisionNote: string | null;
   requester: { id: string; name: string; role: string; student: { studentId: string; section: { name: string } | null } | null };
@@ -32,6 +33,7 @@ interface Req {
 
 const KIND: Record<Req['kind'], string> = { TEACHER_ABSENCE: 'Teacher absence', STUDENT_ABSENCE: 'Student absence', SECTION_SWAP: 'Section change' };
 const STATUS_STYLE: Record<Req['status'], string> = {
+  CANCELLED: 'bg-muted text-muted-foreground',
   PENDING: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200',
   APPROVED: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
   REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
@@ -41,6 +43,15 @@ export default function RequestsPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const canDecide = user?.role === 'ADMIN' || user?.role === 'MODULE_LEADER';
+  // Whoever raised a request can withdraw it while nobody has decided it yet.
+  const cancel = useMutation({
+    mutationFn: (id: string) => api(`/api/requests/${id}/cancel`, { method: 'POST', body: {} }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['requests'] });
+      toast.success('Request withdrawn');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const [status, setStatus] = useState<'ALL' | Req['status']>(canDecide ? 'PENDING' : 'ALL');
   const list = useQuery({ queryKey: ['requests', status], queryFn: () => api<Req[]>(`/api/requests${qs({ status: status === 'ALL' ? undefined : status })}`) });
   const teachers = useQuery({ queryKey: ['tt', 'teachers'], queryFn: () => api<{ id: string; name: string }[]>('/api/timetable/teachers'), enabled: canDecide });
@@ -68,12 +79,12 @@ export default function RequestsPage() {
         <p className="text-sm text-muted-foreground">{canDecide ? 'Teacher absences (assign cover or cancel the class), student absences and section changes.' : 'Absence and section-change requests you have made, with the RTE decision.'}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((s) => <Button key={s} size="sm" variant={s === status ? 'default' : 'outline'} onClick={() => setStatus(s)}>{s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}</Button>)}
+        {(['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as const).map((s) => <Button key={s} size="sm" variant={s === status ? 'default' : 'outline'} onClick={() => setStatus(s)}>{s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}</Button>)}
       </div>
       {list.isError && <Alert variant="destructive"><AlertDescription>{(list.error as Error).message}</AlertDescription></Alert>}
       <div className="overflow-x-auto border bg-card">
         <Table>
-          <TableHeader><TableRow><TableHead>Kind</TableHead><TableHead>Who</TableHead><TableHead>Class / target</TableHead><TableHead>Date</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead>{canDecide && <TableHead></TableHead>}</TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Kind</TableHead><TableHead>Who</TableHead><TableHead>Class / target</TableHead><TableHead>Date</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead></TableHead></TableRow></TableHeader>
           <TableBody>
             {list.isPending && Array.from({ length: 3 }).map((_, i) => <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}</TableRow>)}
             {list.data?.length === 0 && <TableRow><TableCell colSpan={7} className="py-10 text-center text-muted-foreground">No requests.</TableCell></TableRow>}
@@ -84,7 +95,26 @@ export default function RequestsPage() {
                 <TableCell className="text-sm">{r.slot ? `${r.slot.moduleOffering.module.code} · section ${r.slot.section.name} · ${r.slot.startTime}–${r.slot.endTime}` : r.targetSection ? `→ Section ${r.targetSection.name}` : '—'}</TableCell>
                 <TableCell className="text-sm">{r.date.slice(0, 10)}</TableCell>
                 <TableCell className="max-w-xs text-sm">{r.reason}{r.decisionNote && <div className="text-xs text-muted-foreground">Decision: {r.decisionNote}</div>}</TableCell>
-                <TableCell><Badge variant="outline" className={cn('border-transparent', STATUS_STYLE[r.status])}>{r.status}</Badge>{r.decidedBy && <div className="text-xs text-muted-foreground">{r.decidedBy.name}</div>}</TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={cn('border-transparent', STATUS_STYLE[r.status])}>{r.status}</Badge>
+                  {r.decidedBy && <div className="text-xs text-muted-foreground">{r.decidedBy.name}</div>}
+                  {!canDecide && (
+                    <div className="mt-0.5 max-w-[14rem] text-xs text-muted-foreground">
+                      {r.status === 'PENDING' && 'Sent — waiting for a decision'}
+                      {r.status === 'APPROVED' && 'Accepted'}
+                      {r.status === 'REJECTED' && 'Turned down'}
+                      {r.status === 'CANCELLED' && 'You withdrew this'}
+                      {r.decisionNote ? ` · “${r.decisionNote}”` : ''}
+                    </div>
+                  )}
+                </TableCell>
+                {!canDecide && (
+                  <TableCell className="text-right">
+                    {r.status === 'PENDING' ? (
+                      <Button size="sm" variant="outline" disabled={cancel.isPending} onClick={() => cancel.mutate(r.id)}>Withdraw</Button>
+                    ) : null}
+                  </TableCell>
+                )}
                 {canDecide && (
                   <TableCell className="text-right">
                     {r.status === 'PENDING' && (
@@ -102,7 +132,7 @@ export default function RequestsPage() {
       </div>
 
       <Dialog open={!!deciding} onOpenChange={(o) => !o && setDeciding(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{deciding?.decision === 'APPROVED' ? 'Approve' : 'Reject'} {deciding ? KIND[deciding.r.kind].toLowerCase() : ''}</DialogTitle>
             <DialogDescription>{deciding?.r.requester.name} · {deciding?.r.date.slice(0, 10)} · {deciding?.r.reason}</DialogDescription>

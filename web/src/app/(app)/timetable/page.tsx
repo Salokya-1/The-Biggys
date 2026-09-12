@@ -420,7 +420,7 @@ export default function TimetablePage() {
       {/* ---------- clash dialog with alternatives ---------- */}
       {/* ---------- add one class to the routine ---------- */}
       <Dialog open={!!newClass} onOpenChange={(o) => !o && setNewClass(null)}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Add a class</DialogTitle>
             <DialogDescription>
@@ -497,7 +497,7 @@ export default function TimetablePage() {
       </Dialog>
 
       <Dialog open={!!clash} onOpenChange={(o) => !o && setClash(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{clash?.message}</DialogTitle>
             <DialogDescription>{clash ? `${clash.item.module?.code} · section ${clash.item.section?.name} could not be moved there.` : ''}</DialogDescription>
@@ -512,11 +512,21 @@ export default function TimetablePage() {
               <div>
                 <div className="mb-1 text-sm font-medium">Free slots that do work</div>
                 {clash.alternatives.length === 0 && <p className="text-sm text-muted-foreground">No free slot this week keeps the teacher, the room and the rules happy. Free a room or move another class first.</p>}
-                <div className="grid gap-1.5 sm:grid-cols-2">
+                {/* One per row and free to wrap: the room names are long and were spilling out. */}
+                <div className="grid gap-1.5">
                   {clash.alternatives.map((a, i) => (
-                    <Button key={i} variant="outline" size="sm" className="justify-between" disabled={move.isPending} onClick={() => move.mutate({ item: clash.item, dayOfWeek: a.dayOfWeek, startTime: a.startTime, endTime: a.endTime, venueId: a.venueId })}>
-                      <span>{DAYS[a.dayOfWeek - 1]} {a.startTime}–{a.endTime}</span>
-                      <span className="text-xs text-muted-foreground">{a.venueName}{a.keepsRoom ? ' (same room)' : ''}{a.createsGap ? ' · leaves a gap' : ''}</span>
+                    <Button
+                      key={i}
+                      variant="outline"
+                      size="sm"
+                      className="h-auto w-full min-w-0 flex-col items-start gap-0.5 whitespace-normal py-2 text-left"
+                      disabled={move.isPending}
+                      onClick={() => move.mutate({ item: clash.item, dayOfWeek: a.dayOfWeek, startTime: a.startTime, endTime: a.endTime, venueId: a.venueId })}
+                    >
+                      <span className="font-medium">{DAYS[a.dayOfWeek - 1]} {a.startTime}–{a.endTime}</span>
+                      <span className="w-full break-words text-xs font-normal text-muted-foreground">
+                        {a.venueName}{a.keepsRoom ? ' · same room' : ''}{a.createsGap ? ' · leaves a gap' : ''}
+                      </span>
                     </Button>
                   ))}
                 </div>
@@ -652,7 +662,7 @@ function DayView({ day, sem, teachers, venues, onClose }: { day: { date: string;
       </div>
 
       <Dialog open={!!action} onOpenChange={(o) => !o && setAction(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{action ? titles[action.kind] : ''}</DialogTitle>
             <DialogDescription>{action?.item ? `${action.item.startTime}–${action.item.endTime} · ${action.item.title} · ${day.date}` : day.date}. Clashes with the teacher&apos;s or room&apos;s other commitments are rejected.</DialogDescription>

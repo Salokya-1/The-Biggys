@@ -27,7 +27,14 @@ interface Invoice {
 function AdmitCardPanel() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['me', 'fees'], queryFn: () => api<{ invoices: Invoice[] }>('/api/fees/me') });
-  const current = q.data?.invoices[0];
+  // The card matters when there is an exam to sit, so the panel follows the next exam rather than
+  // whichever invoice happens to be newest.
+  const exams = useQuery({ queryKey: ['me', 'exams'], queryFn: () => api<{ id: string; title: string; date: string; startTime: string; semesterId?: string }[]>('/api/exams/me') });
+  const today = new Date().toISOString().slice(0, 10);
+  const nextExam = (exams.data ?? []).filter((e) => e.date.slice(0, 10) >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const invoices = q.data?.invoices ?? [];
+  const current = (nextExam?.semesterId ? invoices.find((i) => i.semesterId === nextExam.semesterId) : undefined) ?? invoices[0];
+  const daysAway = nextExam ? Math.round((new Date(nextExam.date.slice(0, 10)).getTime() - new Date(today).getTime()) / 86400e3) : null;
 
   const issue = useMutation({
     mutationFn: (inv: Invoice) => api<{ cardNo: string }>('/api/admit-cards/issue', { method: 'POST', body: { semesterId: inv.semesterId } }),
@@ -44,13 +51,18 @@ function AdmitCardPanel() {
   return (
     <Card className={current.admitCard ? 'border-emerald-300 dark:border-emerald-800' : current.status === 'UNPAID' ? 'border-destructive/50' : undefined}>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">Exam admit card · Semester {current.semester.number}</CardTitle>
+        <CardTitle className="text-base">
+          Exam admit card · Semester {current.semester.number}
+          {nextExam ? <span className="ml-2 text-xs font-normal text-muted-foreground">next exam {nextExam.date.slice(0, 10)} at {nextExam.startTime}{daysAway !== null && daysAway <= 14 ? ` · in ${daysAway === 0 ? 'today' : `${daysAway} day${daysAway === 1 ? '' : 's'}`}` : ''}</span> : null}
+        </CardTitle>
         <CardDescription>
           {current.admitCard
             ? `Issued ${current.admitCard.issuedAt.slice(0, 10)} · card ${current.admitCard.cardNo}. Bring it to every examination with your student ID.`
             : current.status === 'UNPAID'
               ? `Your semester fee of ${current.currency} ${current.amount.toLocaleString()} is unpaid (due ${current.dueDate.slice(0, 10)}). The admit card is released as soon as it is paid.`
-              : 'Your fee is settled — issue your admit card now.'}
+              : nextExam
+                ? `You have ${nextExam.title} on ${nextExam.date.slice(0, 10)}. Your fee is settled — issue your admit card now.`
+                : 'Your fee is settled — issue your admit card now.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">

@@ -41,6 +41,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Sign in'), actions: [const ThemeToggleButton(), IconButton(icon: const Icon(Icons.settings), onPressed: () => context.push('/settings'))]),
       body: ListView(padding: const EdgeInsets.all(20), children: [
+        Center(child: Image.asset('assets/brand/kramiq.png', height: 132, fit: BoxFit.contain)),
+        const SizedBox(height: 12),
         const Text('RTE Integrated Management System', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         Text('Islington College · $baseUrl', style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 20),

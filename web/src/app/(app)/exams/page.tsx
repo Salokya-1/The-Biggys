@@ -146,7 +146,7 @@ export default function ExamsPage() {
 
       {/* ---------- generate whole-semester schedule ---------- */}
       <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader><DialogTitle>Generate semester exam schedule</DialogTitle><DialogDescription>One final exam per module inside the two-week exam window, weekdays at 09:00 and 13:00, one exam per day per cohort, venues packed largest-first, one invigilator per venue who does not teach the module. Runs automatically 3 weeks before the window if nobody has done it.</DialogDescription></DialogHeader>
           <Select value={scheduleSemester} onValueChange={(v) => setScheduleSemester(v ?? '')} items={Object.fromEntries((semesters.data ?? []).map((s) => [s.id, `${s.intake.programme.code} ${s.intake.label} · Sem ${s.number} · exams from ${s.examStart.slice(0, 10)}${s._count.examSessions ? ` (${s._count.examSessions} sessions exist)` : ''}`]))}>
             <SelectTrigger className="w-full"><SelectValue placeholder="Semester" /></SelectTrigger>

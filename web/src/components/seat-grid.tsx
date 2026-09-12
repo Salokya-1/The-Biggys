@@ -46,6 +46,15 @@ interface Props {
 }
 
 /** Colour-coded room grid. Front of the room is at the top. */
+/** A chair seen from the side: back, seat and legs. Drawn so it stays crisp at any cell size. */
+function Chair({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className={className} aria-hidden>
+      <path d="M6 4v8m12-8v8M4 12h16M7 12v8m10-8v8" />
+    </svg>
+  );
+}
+
 export function SeatGrid({ rows, cols, disabledSeats, seats, modules, highlight, compact }: Props) {
   const disabled = new Set(disabledSeats.map((d) => `${d.row}:${d.col}`));
   const byPos = new Map(seats.map((s) => [`${s.row}:${s.col}`, s]));
@@ -67,8 +76,9 @@ export function SeatGrid({ rows, cols, disabledSeats, seats, modules, highlight,
             }
             if (!s) {
               return (
-                <div key={key} className={cn(size, 'flex items-start justify-start rounded border border-border p-0.5 text-muted-foreground/60', isHl && 'ring-2 ring-primary')}>
-                  {!compact && seatLabel(row, col)}
+                <div key={key} className={cn(size, 'relative flex items-start justify-start rounded border border-border p-0.5 text-muted-foreground/60', isHl && 'ring-2 ring-primary')}>
+                  <Chair className="pointer-events-none absolute inset-0 m-auto h-1/2 w-1/2 opacity-25" />
+                  <span className="relative">{!compact && seatLabel(row, col)}</span>
                 </div>
               );
             }
@@ -76,13 +86,14 @@ export function SeatGrid({ rows, cols, disabledSeats, seats, modules, highlight,
             return (
               <div
                 key={key}
-                className={cn(size, 'flex flex-col justify-between rounded border p-0.5 leading-tight', colour, s.violation ? 'border-red-500 ring-1 ring-red-500' : 'border-transparent', isHl && 'ring-2 ring-primary')}
+                className={cn(size, 'relative flex flex-col justify-between overflow-hidden rounded border p-0.5 leading-tight', colour, s.violation ? 'border-red-500 ring-1 ring-red-500' : 'border-transparent', isHl && 'ring-2 ring-primary')}
                 title={`${s.seatLabel} · ${s.studentId} ${s.name} · ${s.moduleCode}${s.specialNeeds ? ' · special needs' : ''}${s.violation ? ' · adjacency clash' : ''}`}
               >
+                <Chair className="pointer-events-none absolute right-0.5 bottom-0.5 h-3 w-3 opacity-40" />
                 {!compact && (
                   <>
-                    <span className="font-semibold">{s.seatLabel}{s.specialNeeds ? ' ◆' : ''}</span>
-                    <span className="truncate font-mono">{s.studentId}</span>
+                    <span className="relative font-semibold">{s.seatLabel}{s.specialNeeds ? ' ◆' : ''}</span>
+                    <span className="relative truncate font-mono">{s.studentId}</span>
                   </>
                 )}
               </div>

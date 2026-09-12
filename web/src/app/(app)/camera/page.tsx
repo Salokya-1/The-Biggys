@@ -162,7 +162,7 @@ export default function CameraAccessPage() {
       {can('users.manage') ? <Outbox /> : null}
 
       <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Request camera access</DialogTitle>
             <DialogDescription>
