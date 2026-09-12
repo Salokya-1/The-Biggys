@@ -42,7 +42,7 @@ interface Teacher {
 }
 type Session = ExamSessionListItem & { kind: 'FINAL' | 'CLASS_TEST' | 'RESIT'; seatingMode: 'MIXED' | 'BY_ID'; generatedBy: string | null; invigilators: { user: { name: string }; venue: { name: string } }[]; sections: { name: string }[] };
 
-const KIND_STYLE = { FINAL: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200', CLASS_TEST: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200', RESIT: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' };
+const KIND_STYLE = { FINAL: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200', CLASS_TEST: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200', RESIT: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200' };
 
 export default function ExamsPage() {
   const { user } = useAuth();
@@ -136,7 +136,7 @@ export default function ExamsPage() {
                 <TableCell className="text-xs">{e.venues.map((v) => v.name).join(', ')}<div className="text-muted-foreground">{e.invigilators.length ? e.invigilators.map((i) => `${i.user.name} (${i.venue.name})`).join(', ') : 'no invigilators'}</div></TableCell>
                 <TableCell className="text-right">{e.candidates} / {e.capacity}</TableCell>
                 <TableCell>
-                  {e.seated > 0 ? <Badge variant="outline" className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">{e.seated} seated</Badge> : e.candidates > e.capacity ? <Badge variant="outline" className="border-transparent bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">Over capacity</Badge> : <Badge variant="outline" className="border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Pending</Badge>}
+                  {e.seated > 0 ? <Badge variant="outline" className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">{e.seated} seated</Badge> : e.candidates > e.capacity ? <Badge variant="outline" className="border-transparent bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">Over capacity</Badge> : <Badge variant="outline" className="border-transparent bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Pending</Badge>}
                 </TableCell>
               </TableRow>
             ))}

@@ -12,12 +12,12 @@ import { api, ApiError } from '@/lib/api';
 import type { MarkSheetDetail, TransitionAction } from '@/lib/types';
 
 const LABEL: Record<TransitionAction, { label: string; variant: 'default' | 'outline' | 'destructive' | 'secondary'; needsReason?: boolean; describe: string }> = {
-  submit: { label: 'Submit for review', variant: 'default', describe: 'Locks the marks and sends the sheet to the module leader.' },
+  submit: { label: 'Submit for review', variant: 'default', describe: 'Locks the marks and sends sheet to module leader.' },
   start_review: { label: 'Start review', variant: 'secondary', describe: 'Marks the sheet as under review.' },
   approve: { label: 'Approve', variant: 'default', describe: 'Confirms the computed results; the RTE admin can then publish.' },
-  reject: { label: 'Return to lecturer', variant: 'destructive', needsReason: true, describe: 'Sends the sheet back to DRAFT. A reason is required and is recorded in the audit log.' },
+  reject: { label: 'Return to lecturer', variant: 'destructive', needsReason: true, describe: 'Sends the sheet back to DRAFT. A reason is required and recorded in audit log.' },
   publish: { label: 'Publish results', variant: 'default', describe: 'Makes results visible to students. Published marks become immutable; changes require a correction version.' },
-  request_correction: { label: 'Request correction', variant: 'destructive', needsReason: true, describe: 'Opens the way for a new version. Students will be told their result was updated when the new version is published.' },
+  request_correction: { label: 'Request correction', variant: 'destructive', needsReason: true, describe: 'Opens the way for a new version. Students will be told their result was updated when version is published.' },
 };
 
 export function TransitionBar({ detail }: { detail: MarkSheetDetail }) {
@@ -66,7 +66,7 @@ export function TransitionBar({ detail }: { detail: MarkSheetDetail }) {
           variant={LABEL[a].variant}
           size="sm"
           disabled={run.isPending || (a === 'submit' && validation.errors.length > 0)}
-          title={a === 'submit' && validation.errors.length > 0 ? 'Fix the issues in the Review tab first' : undefined}
+          title={a === 'submit' && validation.errors.length > 0 ? 'Fix the issues in Review tab first' : undefined}
           onClick={() => setOpen(a)}
         >
           {LABEL[a].label}

@@ -20,7 +20,7 @@ import { useAuth } from '@/lib/auth';
 import type { CameraRequestList, EmailOutbox, ExamSessionListItem, Venue } from '@/lib/types';
 
 const STATUS_STYLE: Record<string, string> = {
-  PENDING: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100',
+  PENDING: 'bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100',
   SENT: 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100',
   APPROVED: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100',
   DENIED: 'bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100',

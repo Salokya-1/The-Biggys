@@ -253,6 +253,8 @@ export interface Venue {
   disabledSeats: { row: number; col: number }[];
   adjacencyMode: 'ROW' | 'ROW_AND_COLUMN';
   isClassroom: boolean;
+  /** What the room is for; the timetable only puts a lecture in a hall and a workshop in a lab. */
+  roomType?: 'HALL' | 'LECTURE_THEATRE' | 'TUTORIAL_ROOM' | 'SEMINAR_ROOM' | 'LAB';
   layout?: unknown;
   capacity: number;
   _count?: { examSessions: number };

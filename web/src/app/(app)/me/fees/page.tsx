@@ -65,7 +65,7 @@ export default function MyFeesPage() {
         <Card key={inv.id}>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Semester {inv.semester.number} · {inv.semester.intake.programme.code} {inv.semester.intake.label}</CardTitle>
-            <CardDescription>{inv.currency} {inv.amount.toLocaleString()} · due {inv.dueDate.slice(0, 10)} · <span className={inv.status === 'UNPAID' ? 'font-semibold text-destructive' : 'font-semibold text-emerald-600'}>{inv.status}</span>{inv.paidAt ? ` on ${inv.paidAt.slice(0, 10)} via ${inv.method} (ref ${inv.reference})` : ''}</CardDescription>
+            <CardDescription>{inv.currency} {inv.amount.toLocaleString()} · due {inv.dueDate.slice(0, 10)} · <span className={inv.status === 'UNPAID' ? 'font-semibold text-destructive' : 'font-semibold text-emerald-600 dark:text-emerald-400'}>{inv.status}</span>{inv.paidAt ? ` on ${inv.paidAt.slice(0, 10)} via ${inv.method} (ref ${inv.reference})` : ''}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {inv.status === 'UNPAID' && <Button size="sm" onClick={() => setPaying(inv)}><CreditCard className="mr-1 h-4 w-4" /> Pay {inv.currency} {inv.amount.toLocaleString()}</Button>}

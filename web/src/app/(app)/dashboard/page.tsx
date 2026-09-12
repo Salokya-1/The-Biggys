@@ -124,7 +124,7 @@ export default function DashboardPage() {
                   <TableCell>{p.lecturer ?? '—'}</TableCell>
                   <TableCell><SheetStatusBadge status={p.status} /></TableCell>
                   <TableCell className="text-right font-mono text-xs">{p.marksEntered}/{p.marksExpected}</TableCell>
-                  <TableCell className="text-right">{p.missing > 0 ? <Badge variant="outline" className="border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">{p.missing}</Badge> : <span className="text-muted-foreground">0</span>}</TableCell>
+                  <TableCell className="text-right">{p.missing > 0 ? <Badge variant="outline" className="border-transparent bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">{p.missing}</Badge> : <span className="text-muted-foreground">0</span>}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{new Date(p.updatedAt).toLocaleDateString()}</TableCell>
                 </TableRow>
               ))}
@@ -142,7 +142,7 @@ export default function DashboardPage() {
               <Link key={e.id} href={`/exams/${e.id}`} className="block rounded-none border p-3 hover:bg-muted">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{e.title}</span>
-                  {e.ready ? <Badge variant="outline" className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Seated</Badge> : <Badge variant="outline" className="border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Seating pending</Badge>}
+                  {e.ready ? <Badge variant="outline" className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Seated</Badge> : <Badge variant="outline" className="border-transparent bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Seating pending</Badge>}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">{new Date(e.date).toLocaleDateString()} {e.startTime} · {e.candidates} candidates · capacity {e.capacity} · utilisation {e.utilisation}%</div>
                 <div className="mt-2 h-1.5 w-full rounded bg-muted"><div className="h-1.5 rounded bg-primary" style={{ width: `${Math.min(100, e.utilisation)}%` }} /></div>
@@ -199,7 +199,7 @@ export default function DashboardPage() {
                     <TableCell><div className="font-medium">{p.code}</div><div className="text-xs text-muted-foreground">{p.title}</div></TableCell>
                     <TableCell className="text-right">{p.latest.passRate}% <span className="text-xs text-muted-foreground">({p.latest.intake})</span></TableCell>
                     <TableCell className="text-right">{p.previous?.passRate}%</TableCell>
-                    <TableCell className={`text-right font-medium ${p.delta! < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    <TableCell className={`text-right font-medium ${p.delta! < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                       <span className="inline-flex items-center gap-1">{p.delta! < 0 ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}{p.delta! > 0 ? '+' : ''}{p.delta}</span>
                     </TableCell>
                   </TableRow>
@@ -235,19 +235,19 @@ export default function DashboardPage() {
           <CardContent className="max-h-72 space-y-3 overflow-y-auto text-sm">
             {dqTotal === 0 && <p className="text-muted-foreground">No issues detected.</p>}
             {dq.missingResults.map((m) => (
-              <div key={m.code} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span><strong>{m.missing}</strong> published enrolment{m.missing === 1 ? '' : 's'} on <strong>{m.code}</strong> without a result (marks never completed)</span></div>
+              <div key={m.code} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" /><span><strong>{m.missing}</strong> published enrolment{m.missing === 1 ? '' : 's'} on <strong>{m.code}</strong> without a result (marks never completed)</span></div>
             ))}
             {dq.studentsWithoutSemester.length > 0 && (
-              <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span><strong>{dq.studentsWithoutSemester.length}</strong> active student{dq.studentsWithoutSemester.length === 1 ? '' : 's'} with no current semester: {dq.studentsWithoutSemester.map((s) => <Link key={s.id} href={`/students/${s.id}`} className="underline">{s.studentId}</Link>).reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ', ', el] : [el]), [])}</span></div>
+              <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" /><span><strong>{dq.studentsWithoutSemester.length}</strong> active student{dq.studentsWithoutSemester.length === 1 ? '' : 's'} with no current semester: {dq.studentsWithoutSemester.map((s) => <Link key={s.id} href={`/students/${s.id}`} className="underline">{s.studentId}</Link>).reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ', ', el] : [el]), [])}</span></div>
             )}
             {dq.mismatchedIntake.length > 0 && (
-              <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span><strong>{dq.mismatchedIntake.length}</strong> student{dq.mismatchedIntake.length === 1 ? '' : 's'} whose intake belongs to a different programme: {dq.mismatchedIntake.map((s) => <Link key={s.id} href={`/students/${s.id}`} className="underline">{s.studentId}</Link>).reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ', ', el] : [el]), [])}</span></div>
+              <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" /><span><strong>{dq.mismatchedIntake.length}</strong> student{dq.mismatchedIntake.length === 1 ? '' : 's'} whose intake belongs to a different programme: {dq.mismatchedIntake.map((s) => <Link key={s.id} href={`/students/${s.id}`} className="underline">{s.studentId}</Link>).reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ', ', el] : [el]), [])}</span></div>
             )}
             {dq.withdrawnWithActiveLogin > 0 && (
-              <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span><strong>{dq.withdrawnWithActiveLogin}</strong> withdrawn student{dq.withdrawnWithActiveLogin === 1 ? '' : 's'} still with an active login</span></div>
+              <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" /><span><strong>{dq.withdrawnWithActiveLogin}</strong> withdrawn student{dq.withdrawnWithActiveLogin === 1 ? '' : 's'} still with an active login</span></div>
             )}
             {dq.duplicateNames.map((n) => (
-              <div key={n.name} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span>Possible duplicate: <strong>{n.name}</strong> appears {n.n} times with different IDs</span></div>
+              <div key={n.name} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" /><span>Possible duplicate: <strong>{n.name}</strong> appears {n.n} times with different IDs</span></div>
             ))}
           </CardContent>
         </Card>

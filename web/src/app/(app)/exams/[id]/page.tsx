@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { MODULE_PALETTE, SeatGrid } from '@/components/seat-grid';
+import { RoomChooser } from '@/components/room-chooser';
 import { api, downloadWithAuth } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -20,7 +21,7 @@ import type { ExamDetail } from '@/lib/types';
 
 export default function ExamDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['exam', id], queryFn: () => api<ExamDetail>(`/api/exams/${id}`) });
   const [seed, setSeed] = useState<number | ''>('');
@@ -97,10 +98,19 @@ export default function ExamDetailPage() {
         </Alert>
       )}
       {d.unseated.length > 0 && (
-        <Alert variant="destructive">
-          <AlertTitle>{d.unseated.length} student{d.unseated.length === 1 ? '' : 's'} could not be seated</AlertTitle>
-          <AlertDescription>Capacity is insufficient. Add a venue or split the session. Unseated: {d.unseated.map((u) => `${u.label} (${u.moduleCode})`).join(', ')}</AlertDescription>
-        </Alert>
+        <>
+          <Alert variant="destructive">
+            <AlertTitle>{d.unseated.length} student{d.unseated.length === 1 ? '' : 's'} could not be seated</AlertTitle>
+            <AlertDescription>
+              There are more candidates than seats. Pick more rooms below, then generate seating again.
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs underline-offset-4 hover:underline">Who is unseated ({d.unseated.length})</summary>
+                <p className="mt-1 max-h-40 overflow-y-auto text-xs">{d.unseated.map((u) => `${u.label} (${u.moduleCode})`).join(', ')}</p>
+              </details>
+            </AlertDescription>
+          </Alert>
+          <RoomChooser examId={id} canEdit={can('exam.create')} />
+        </>
       )}
       {d.violations.length > 0 && (
         <Alert>

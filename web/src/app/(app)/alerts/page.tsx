@@ -19,7 +19,7 @@ import type { ClassAlertRow } from '@/lib/types';
 
 const STATUS_STYLE: Record<string, string> = {
   OPEN: 'bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100',
-  COVER_ASSIGNED: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100',
+  COVER_ASSIGNED: 'bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100',
   RESOLVED: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100',
   DISMISSED: 'bg-muted text-muted-foreground',
 };

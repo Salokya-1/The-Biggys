@@ -12,7 +12,11 @@ import { notifyUsers } from '../lib/notify';
 import { renderSeatingPdf } from '../services/seating-pdf';
 import { scheduleSemesterExams } from '../services/exams';
 import { teacherConflicts } from '../services/calendar';
-import { toMinutes } from '../lib/timetable';
+import { fromMinutes, overlaps, toMinutes } from '../lib/timetable';
+
+const addMinutes = (t: string, min: number) => fromMinutes(toMinutes(t) + min);
+/** ISO weekday: 1 = Monday … 7 = Sunday. */
+const isoDow = (d: Date) => ((d.getUTCDay() + 6) % 7) + 1;
 
 const seatSchema = z.object({ row: z.number().int().min(1), col: z.number().int().min(1) });
 const venueBody = z.object({
@@ -23,6 +27,8 @@ const venueBody = z.object({
   disabledSeats: z.array(seatSchema).max(500).default([]),
   adjacencyMode: z.enum(['ROW', 'ROW_AND_COLUMN']).default('ROW'),
   isClassroom: z.boolean().optional(),
+  /** What the room is for: a lecture needs a hall, a workshop a lab, a tutorial a seminar room. */
+  roomType: z.enum(['HALL', 'LECTURE_THEATRE', 'TUTORIAL_ROOM', 'SEMINAR_ROOM', 'LAB']).optional(),
   /** Drawn layout from the room designer: cell kind per "row:col" plus how seats are labelled. */
   layout: z
     .object({
@@ -350,6 +356,111 @@ export async function examRoutes(app: FastifyInstance) {
     const r = await prisma.seatAllocation.deleteMany({ where: { examSessionId: id } });
     await audit(prisma, { ...actorOf(req), action: 'seating.clear', entityType: 'ExamSession', entityId: id, before: { allocations: r.count } });
     return { cleared: r.count };
+  });
+
+  /**
+   * Rooms that are free for this sitting, largest first, with the shortfall spelled out.
+   *
+   * "Capacity is insufficient" is a complaint. What RTE needs is the list of rooms it could add
+   * and how many seats each one buys, so the answer is one or two clicks rather than a hunt.
+   */
+  /** Everything that happens in one room in a normal week, plus the exams booked into it. */
+  app.get('/venues/:id/classes', { preHandler: [allow('seating.read')] }, async (req) => {
+    const { id } = parse(idParam, req.params);
+    const venue = await prisma.venue.findUnique({ where: { id } });
+    if (!venue) throw notFound('Room not found');
+    const [slots, exams] = await Promise.all([
+      prisma.timetableSlot.findMany({
+        where: { venueId: id },
+        include: {
+          section: { select: { name: true } },
+          groups: { select: { name: true } },
+          teacher: { select: { name: true } },
+          moduleOffering: { select: { module: { select: { code: true, title: true } }, semester: { select: { number: true, intake: { select: { label: true, programme: { select: { code: true } } } } } } } },
+        },
+        orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+      }),
+      prisma.examSession.findMany({ where: { venues: { some: { id } } }, select: { id: true, title: true, date: true, startTime: true, durationMin: true }, orderBy: { date: 'asc' } }),
+    ]);
+    const DAY: Record<number, string> = { 7: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
+    const hours = slots.reduce((n, s) => n + (toMinutes(s.endTime) - toMinutes(s.startTime)) / 60, 0);
+    return {
+      venue: { id: venue.id, name: venue.name, building: venue.building, roomType: venue.roomType, seats: venue.rows * venue.cols - ((venue.disabledSeats as unknown[]) ?? []).length },
+      // 6 teaching days × 11 usable hours is the week this room could give.
+      utilisation: Math.round((hours / (6 * 11)) * 1000) / 10,
+      hoursPerWeek: Math.round(hours * 10) / 10,
+      classes: slots.map((s) => ({
+        id: s.id,
+        day: DAY[s.dayOfWeek] ?? String(s.dayOfWeek),
+        dayOfWeek: s.dayOfWeek,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        kind: s.kind,
+        module: s.moduleOffering.module,
+        cohort: `${s.moduleOffering.semester.intake.programme.code} ${s.moduleOffering.semester.intake.label} S${s.moduleOffering.semester.number}`,
+        groups: (s.groups.length ? s.groups : [s.section]).map((g) => g.name),
+        teacher: s.teacher.name,
+      })),
+      exams: exams.map((e) => ({ ...e, endTime: addMinutes(e.startTime, e.durationMin) })),
+    };
+  });
+
+  app.get('/exams/:id/free-rooms', { preHandler: [allow('seating.read')] }, async (req) => {
+    const { id } = parse(idParam, req.params);
+    const exam = await prisma.examSession.findUnique({
+      where: { id },
+      include: { venues: { select: { id: true, name: true, rows: true, cols: true, disabledSeats: true } }, offerings: { select: { id: true } } },
+    });
+    if (!exam) throw notFound('Exam session not found');
+
+    const seats = (v: { rows: number; cols: number; disabledSeats: unknown }) => v.rows * v.cols - ((v.disabledSeats as unknown[]) ?? []).length;
+    const endTime = addMinutes(exam.startTime, exam.durationMin);
+
+    // Anything already booked that day: another exam, or a class in the same room.
+    const [otherExams, classes, allRooms, candidates] = await Promise.all([
+      prisma.examSession.findMany({ where: { date: exam.date, NOT: { id } }, select: { startTime: true, durationMin: true, venues: { select: { id: true } } } }),
+      prisma.timetableSlot.findMany({ where: { dayOfWeek: isoDow(exam.date) }, select: { venueId: true, startTime: true, endTime: true } }),
+      prisma.venue.findMany({ orderBy: [{ rows: 'desc' }] }),
+      prisma.enrollment.count({ where: { moduleOfferingId: { in: exam.offerings.map((o) => o.id) }, deletedAt: null } }),
+    ]);
+
+    const takenByExam = new Set(
+      otherExams.flatMap((e) => (overlaps(e.startTime, addMinutes(e.startTime, e.durationMin), exam.startTime, endTime) ? e.venues.map((v) => v.id) : [])),
+    );
+    const takenByClass = new Set(classes.filter((c) => c.venueId && overlaps(c.startTime, c.endTime, exam.startTime, endTime)).map((c) => c.venueId!));
+    const inUse = new Set(exam.venues.map((v) => v.id));
+
+    const capacity = exam.venues.reduce((n, v) => n + seats(v), 0);
+    const free = allRooms
+      .filter((v) => !inUse.has(v.id) && !takenByExam.has(v.id) && !takenByClass.has(v.id))
+      .map((v) => ({ id: v.id, name: v.name, building: v.building, isExamHall: !v.isClassroom, seats: seats(v) }))
+      .sort((a, b) => Number(b.isExamHall) - Number(a.isExamHall) || b.seats - a.seats);
+
+    const busy = allRooms
+      .filter((v) => !inUse.has(v.id) && (takenByExam.has(v.id) || takenByClass.has(v.id)))
+      .map((v) => ({ id: v.id, name: v.name, seats: seats(v), why: takenByExam.has(v.id) ? 'another exam' : 'a class' }));
+
+    // The smallest set of free rooms that closes the gap, offered as a one-click suggestion.
+    const shortfall = Math.max(0, candidates - capacity);
+    const suggestion: typeof free = [];
+    let gained = 0;
+    for (const room of free) {
+      if (gained >= shortfall) break;
+      suggestion.push(room);
+      gained += room.seats;
+    }
+
+    return {
+      window: { date: exam.date, startTime: exam.startTime, endTime },
+      candidates,
+      capacity,
+      shortfall,
+      inUse: exam.venues.map((v) => ({ id: v.id, name: v.name, seats: seats(v) })),
+      free,
+      busy,
+      suggestion: gained >= shortfall ? suggestion : [],
+      enough: gained >= shortfall,
+    };
   });
 
   app.get('/exams/:id/lookup', { preHandler: [allow('seating.read')] }, async (req) => {

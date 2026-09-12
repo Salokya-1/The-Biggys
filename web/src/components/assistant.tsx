@@ -24,7 +24,7 @@ interface Msg {
 
 const SUGGESTIONS: Record<string, string[]> = {
   ADMIN: ['Which mark sheets are overdue and who holds them?', 'Generate seating for the resit exam session', 'Show me students with unpaid fees this semester', "Cancel section A's Programming class tomorrow — the room is being repaired"],
-  MODULE_LEADER: ['What is waiting for my review?', 'Summarise the flags on the CS4004 mark sheet', 'What does my week look like?'],
+  MODULE_LEADER: ['What is waiting for my review?', 'Summarise the flags on CS4004 mark sheet', 'What does my week look like?'],
   LECTURER: ['What am I teaching this week?', 'Which of my mark sheets are still draft?', 'Report that I am absent on Friday for the 08:00 class'],
   STUDENT: ['What are my results so far?', 'Where is my next exam seat?', 'Have I paid my semester fee?', 'Show my timetable for this week'],
 };

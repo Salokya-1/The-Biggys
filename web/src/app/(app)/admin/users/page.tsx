@@ -144,7 +144,7 @@ export default function UsersPage() {
                     {!u.student && !u.workload.classes && !u.workload.offerings && !u.workload.modulesLed ? <span className="text-muted-foreground">—</span> : null}
                   </TableCell>
                   <TableCell className="text-right">{u.actions.length}{custom > 0 && <Badge variant="outline" className="ml-2 border-brand-orange text-brand-orange">{custom} custom</Badge>}</TableCell>
-                  <TableCell>{u.isActive ? <span className="text-emerald-600">Active</span> : <span className="text-muted-foreground">Deactivated</span>}</TableCell>
+                  <TableCell>{u.isActive ? <span className="text-emerald-600 dark:text-emerald-400">Active</span> : <span className="text-muted-foreground">Deactivated</span>}</TableCell>
                   <TableCell className="text-right">
                     <Button size="xs" variant="outline" onClick={() => setEditing(u)}><ShieldCheck className="mr-1 h-3.5 w-3.5" /> Permissions</Button>
                   </TableCell>

@@ -232,7 +232,7 @@ export default function TimetablePage() {
             {canEdit
               ? 'One constant weekly routine per section for the 12 teaching weeks. Drag a class to another slot — clashes, the final-year cut-off and the two-hour gap rule are checked before it moves.'
               : isStaff
-                ? 'The weekly routine for the classes you teach. Click a day to see the detail or report an absence.'
+                ? 'The weekly routine for the classes you teach. Click a day to see detail or report an absence.'
                 : "Your section's weekly routine and exam dates. Click a day for detail or to request an absence."}
           </p>
         </div>
@@ -617,7 +617,7 @@ function DayView({ day, sem, teachers, venues, onClose }: { day: { date: string;
                 <span className={cn('font-medium', it.status === 'CANCELLED' && 'line-through')}>{it.title}</span>
                 {it.kind === 'EXAM' && <Badge variant="outline" className="border-brand-orange text-brand-orange">Exam</Badge>}
                 {it.status === 'CANCELLED' && <Badge variant="outline" className="border-transparent bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">Cancelled</Badge>}
-                {it.status === 'CHANGED' && <Badge variant="outline" className="border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">{it.change?.kind.replace('_', ' ').toLowerCase()}</Badge>}
+                {it.status === 'CHANGED' && <Badge variant="outline" className="border-transparent bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">{it.change?.kind.replace('_', ' ').toLowerCase()}</Badge>}
               </div>
               <div className="text-sm text-muted-foreground">{it.subtitle}{it.seat ? ` · your seat ${it.seat}` : ''}</div>
               {it.change && <div className="text-xs text-muted-foreground">{it.change.reason}{it.change.originalTeacher ? ` · originally ${it.change.originalTeacher}` : ''}{it.change.originalVenue ? ` · originally ${it.change.originalVenue}` : ''}</div>}

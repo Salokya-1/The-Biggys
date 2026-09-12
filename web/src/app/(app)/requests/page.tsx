@@ -32,7 +32,7 @@ interface Req {
 
 const KIND: Record<Req['kind'], string> = { TEACHER_ABSENCE: 'Teacher absence', STUDENT_ABSENCE: 'Student absence', SECTION_SWAP: 'Section change' };
 const STATUS_STYLE: Record<Req['status'], string> = {
-  PENDING: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
+  PENDING: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200',
   APPROVED: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
   REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
 };

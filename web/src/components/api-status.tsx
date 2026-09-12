@@ -59,7 +59,7 @@ export function ApiStatus() {
         <div className="flex items-center gap-2 font-medium text-red-700 dark:text-red-300">
           <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot(false)}`} /> API unreachable
         </div>
-        <p className="mt-1 text-red-600/80 dark:text-red-300/80">
+        <p className="mt-1 text-red-600 dark:text-red-400/80 dark:text-red-300/80">
           {API} — {state.error}
         </p>
       </div>

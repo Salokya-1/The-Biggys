@@ -82,13 +82,45 @@ async function main() {
   // schedule around, and what makes the clash detection worth having.
   // Two teachers per module and at most two modules per teacher — the load a real lecturer
   // carries once you count four sections of every module they take.
-  const FACULTY_SIZE = 160;
-  // Distinct names by construction: one surname per block of first names.
-  const faculty = Array.from({ length: FACULTY_SIZE }, (_, i) => ({
-    id: randomUUID(),
-    name: `${FIRST[i % FIRST.length]} ${LAST[Math.floor(i / FIRST.length) % LAST.length]}`,
-    email: `teacher${i + 1}@demo`,
-  }));
+  // The teaching staff named on Islington's own Autumn 2025 allocation sheet. Only the allocation
+  // is modelled against them — classes, rooms and contact hours, exactly the kind of thing that
+  // sheet already records. Every student, mark and result in this seed is invented.
+  const FACULTY_NAMES = [
+  'Mr. Aadesh Tandukar', 'Mr. Aaditya Khwakhwali', 'Mr. Aakash Khatiwada', 'Mr. Aaryan Jha',
+  'Mr. Aashish Acharya', 'Mr. Aashish Rimal', 'Mr. Abhishek Anand', 'Mr. Abhishek Bhatta',
+  'Mr. Abishek Subedi', 'Mr. Alish KC', 'Mr. Anil Kumar Yadav', 'Mr. Anish Chapagain',
+  'Mr. Anish Pudasaini', 'Mr. Ankur Singh Thapa', 'Mr. Ankush Ojha', 'Mr. Anuj Shilpakar',
+  'Mr. Ardent Sharma', 'Mr. Aryan Thapa', 'Mr. Ashitosh Sah', 'Mr. Ashok Dhungana',
+  'Mr. Ayush Bajracharya', 'Mr. Ayush Bhakta Pradhanang', 'Mr. Ayush Man Tamrakar', 'Mr. Basudev Raut',
+  'Mr. Bibek Baral', 'Mr. Bijay Raj Shakya', 'Mr. Bikram Poudel', 'Mr. Binaya Ratna Shakya',
+  'Mr. Binod Bhattarai', 'Mr. Bishal GC', 'Mr. Bishnu Pandey', 'Mr. Bisista Koirala',
+  'Mr. Dhurba Pandey', 'Mr. Dibesh Maskey', 'Mr. Dip Parajuli', 'Mr. Dipesh Raj Adhikari',
+  'Mr. Dipeshor Silwal', 'Mr. Ganesh Subedi', 'Mr. Gyanendra Maharjan', 'Mr. Hrishav Tandukar',
+  'Mr. Indra Dhakal', 'Mr. Ishan Singh Thakuri', 'Mr. Jaganath Paudyal', 'Mr. Jayaram Pudasaini',
+  'Mr. Juned Alam', 'Mr. Kamal Bhusal', 'Mr. Kiran Shrestha', 'Mr. Koshish Jung Lamichhane',
+  'Mr. Lekhnath Katuwal', 'Mr. Mahotsav Bhattarai', 'Mr. Manas Koirala', 'Mr. Manoj Jaishi',
+  'Mr. Mukesh Regmi', 'Mr. Nadil Bahadur Paudel', 'Mr. Nischal Pradhan', 'Mr. Nischaya Subedi',
+  'Mr. Nishchal Paudel', 'Mr. Parbat Bhujel', 'Mr. Pawal Kharel', 'Mr. Prabin Dangol',
+  'Mr. Prabin Silwal', 'Mr. Prajwal Adhikari', 'Mr. Prajwal Thapa', 'Mr. Prajwol Khadka',
+  'Mr. Prakash Ghimire', 'Mr. Prakat Narayan Shrestha', 'Mr. Prashant Lal Shrestha', 'Mr. Prashant Pudasaini',
+  'Mr. Pratik Panta', 'Mr. Rajeev Shrestha', 'Mr. Rakshak Bhusan Bajracharya', 'Mr. Raman Pradhananga',
+  'Mr. Ravi Maharjan', 'Mr. Rohit Man Amatya', 'Mr. Roshan Pokhrel', 'Mr. Roshan Shrestha',
+  'Mr. Rubin Thapa', 'Mr. Sagar Basnet', 'Mr. Samrid Budathoki', 'Mr. Sandesh Prasad Poudel',
+  'Mr. Sanjeep Lama', 'Mr. Sanjish Wagle', 'Mr. Saroj Kumar Yadav', 'Mr. Saurabh Adhikari',
+  'Mr. Shashwot Singh Shahi', 'Mr. Shishir Subedi', 'Mr. Subarna Sapkota', 'Mr. Subash Sharma',
+  'Mr. Sugam Giri', 'Mr. Sugat Shakya', 'Mr. Sujan KC', 'Mr. Sujil Maharjan',
+  'Mr. Sumit Pathak', 'Mr. Sumit Shrestha', 'Mr. Suraj Neupane', 'Mr. Surendra Nepal',
+  'Mr. Sushil Prasad Sharma', 'Mr. Swarnim Pravidhi Chaulagain', 'Mr. Ujjwal Subedi', 'Mr. Utsab Shrestha',
+  'Mr. Vishal Joshi', 'Mr. Yaman Shakya', 'Mr. Yushef Shrestha', 'Mr. Yuyutsav Subedi',
+  'Ms. Ankit Acharya', 'Ms. Apekshya Sigdel', 'Ms. Arati Shilpakar', 'Ms. Asira Khanal',
+  'Ms. Astha Sharma', 'Ms. Jashmine Bajracharya', 'Ms. Katyani Bajgain', 'Ms. Kiran Chand',
+  'Ms. Labbi Karmacharya', 'Ms. Neelima Khanal', 'Ms. Neeta Subedi', 'Ms. Priyanka Acharya',
+  'Ms. Priyasha K.C.', 'Ms. Rabina Lama', 'Ms. Samata Shrestha', 'Ms. Samita Thapa',
+  'Ms. Sarika Dahal', 'Ms. Saumya Subedi', 'Ms. Selina Shakya', 'Ms. Shambhavi Dhakal',
+  'Ms. Shresha Rajbhandari', 'Ms. Somia Dahal', 'Ms. Supriya Tamrakar', 'Ms. Vedika Thapa',
+  ];
+  const FACULTY_SIZE = FACULTY_NAMES.length;
+  const faculty = FACULTY_NAMES.map((name, i) => ({ id: randomUUID(), name, email: `teacher${i + 1}@demo` }));
   await prisma.user.createMany({ data: faculty.map((f) => ({ id: f.id, email: f.email, name: f.name, role: 'LECTURER' as Role, passwordHash })) });
   /** Everyone who can be put in front of a class. */
   const teachingStaff = [...lecturers.map((l) => ({ id: l.id, name: l.name })), ...faculty.map((f) => ({ id: f.id, name: f.name }))];
