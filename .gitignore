@@ -1,0 +1,47 @@
+# --- dependencies / build output (never commit) ---
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.turbo/
+
+# --- secrets (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.keystore
+*.jks
+key.properties
+google-services.json
+firebase_options.dart
+
+# --- flutter / android ---
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/release/
+mobile/**/*.apk
+mobile/**/*.aab
+mobile/.idea/
+mobile/*.iml
+
+# --- db / local data ---
+*.sqlite
+*.db
+pgdata/
+*.dump
+
+# --- os / editor ---
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
