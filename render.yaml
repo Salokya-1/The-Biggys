@@ -44,6 +44,10 @@ services:
       # Loads the demo data the first time the database is empty, and never again.
       - key: SEED_ON_EMPTY
         value: 'true'
+      # Set to 'true' for ONE deploy to rebuild the demo data on a database that already has rows,
+      # then delete the variable. It truncates first, so it is not something to leave switched on.
+      - key: RESEED_ON_START
+        sync: false
       - key: LOG_LEVEL
         value: info
       - key: OPENROUTER_API_KEY

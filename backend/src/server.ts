@@ -23,13 +23,17 @@ function runMigrations(log: (msg: string) => void) {
  * cannot overwrite real data, because the moment there is any, it does nothing.
  */
 async function seedIfEmpty(log: (msg: string) => void) {
-  if (config.SEED_ON_EMPTY !== 'true') return;
+  // RESEED_ON_START rebuilds the demo data even when rows exist. It TRUNCATES first, so it is off
+  // by default and meant to be switched on for one deploy and then removed again.
+  const forced = config.RESEED_ON_START === 'true';
+  if (config.SEED_ON_EMPTY !== 'true' && !forced) return;
   const users = await prisma.user.count();
-  if (users > 0) {
+  if (users > 0 && !forced) {
     log(`database already has ${users} users - not seeding`);
     return;
   }
-  log('empty database - loading the demo data');
+  if (forced && users > 0) log(`RESEED_ON_START is set: replacing the existing ${users} accounts with a fresh demo set. Remove this variable once the deploy is done.`);
+  else log('empty database - loading the demo data');
   // tsx ships as an ESM CLI; resolve the file rather than relying on a bin on PATH.
   const tsx = path.join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
   execFileSync(process.execPath, [tsx, path.join('prisma', 'seed.ts')], { stdio: 'inherit', env: process.env, cwd: process.cwd() });

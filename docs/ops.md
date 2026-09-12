@@ -70,3 +70,8 @@ Two things cost us a deploy each; both are in `render.yaml` now.
 **Mail:** set `SMTP_URL` (any SMTP connection string) and optionally `SMTP_FROM` to deliver
 camera-access requests; `IT_SUPPORT_EMAIL` sets where they go. With no `SMTP_URL` the message is
 written to the outbox and marked queued — visible under `GET /api/emails` — rather than lost.
+
+**Refreshing the demo data on a live deployment:** the seed only runs by itself when the database
+is empty. To rebuild it on a database that already has rows, add `RESEED_ON_START=true` to
+`biggys-api`, save and deploy, wait for the log line that says it is replacing the accounts, then
+delete the variable again. It truncates before it rebuilds, so it is not something to leave on.
