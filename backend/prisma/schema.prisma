@@ -1,0 +1,427 @@
+// The Biggys — RTE Integrated Management System
+// Schema v1. Relationships and constraints follow the build brief §5.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  MODULE_LEADER
+  LECTURER
+  STUDENT
+}
+
+enum StudentStatus {
+  ACTIVE
+  DEFERRED
+  WITHDRAWN
+  GRADUATED
+}
+
+enum Standing {
+  GOOD
+  RESIT
+  REVIEW
+}
+
+enum MarkSheetStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+  CORRECTION_REQUESTED
+}
+
+enum Outcome {
+  PASS
+  FAIL
+  RESIT
+  DEFERRED
+}
+
+enum ImportStatus {
+  PREVIEW
+  COMMITTED
+  DISCARDED
+}
+
+enum AdjacencyMode {
+  ROW
+  ROW_AND_COLUMN
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role
+  isActive     Boolean   @default(true)
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  student            Student?
+  ledModules         Module[]         @relation("ModuleLeader")
+  lecturedOfferings  ModuleOffering[] @relation("OfferingLecturer")
+  submittedSheets    MarkSheet[]      @relation("SheetSubmitter")
+  approvedSheets     MarkSheet[]      @relation("SheetApprover")
+  publishedSheets    MarkSheet[]      @relation("SheetPublisher")
+  importBatches      ImportBatch[]
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  refreshTokens      RefreshToken[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Academic structure
+// ---------------------------------------------------------------------------
+
+model Programme {
+  id    String @id @default(cuid())
+  code  String @unique
+  name  String
+  level String
+
+  intakes  Intake[]
+  modules  Module[]
+  students Student[]
+}
+
+model Intake {
+  id          String   @id @default(cuid())
+  programmeId String
+  label       String
+  startDate   DateTime
+
+  programme Programme  @relation(fields: [programmeId], references: [id])
+  semesters Semester[]
+  students  Student[]
+
+  @@unique([programmeId, label])
+}
+
+model Semester {
+  id        String   @id @default(cuid())
+  intakeId  String
+  number    Int
+  startDate DateTime
+  endDate   DateTime
+
+  intake          Intake           @relation(fields: [intakeId], references: [id])
+  offerings       ModuleOffering[]
+  currentStudents Student[]        @relation("CurrentSemester")
+
+  @@unique([intakeId, number])
+}
+
+model Student {
+  id                  String        @id @default(cuid())
+  userId              String?       @unique
+  studentId           String        @unique // institutional ID, e.g. 23012345
+  name                String
+  email               String?
+  programmeId         String
+  intakeId            String
+  currentSemesterId   String?
+  status              StudentStatus @default(ACTIVE)
+  standing            Standing      @default(GOOD)
+  specialNeedsSeating Boolean       @default(false)
+  deletedAt           DateTime? // soft delete
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  user            User?            @relation(fields: [userId], references: [id])
+  programme       Programme        @relation(fields: [programmeId], references: [id])
+  intake          Intake           @relation(fields: [intakeId], references: [id])
+  currentSemester Semester?        @relation("CurrentSemester", fields: [currentSemesterId], references: [id])
+  enrollments     Enrollment[]
+  seatAllocations SeatAllocation[]
+
+  @@index([programmeId, intakeId, status])
+  @@index([name])
+}
+
+model Module {
+  id             String  @id @default(cuid())
+  code           String  @unique
+  title          String
+  credits        Int
+  semesterNumber Int
+  programmeId    String
+  moduleLeaderId String?
+
+  programme    Programme        @relation(fields: [programmeId], references: [id])
+  moduleLeader User?            @relation("ModuleLeader", fields: [moduleLeaderId], references: [id])
+  offerings    ModuleOffering[]
+}
+
+model ModuleOffering {
+  id         String  @id @default(cuid())
+  moduleId   String
+  semesterId String
+  lecturerId String?
+
+  module       Module                @relation(fields: [moduleId], references: [id])
+  semester     Semester              @relation(fields: [semesterId], references: [id])
+  lecturer     User?                 @relation("OfferingLecturer", fields: [lecturerId], references: [id])
+  components   AssessmentComponent[]
+  enrollments  Enrollment[]
+  markSheets   MarkSheet[]
+  examSessions ExamSession[]
+  seatAllocations SeatAllocation[]
+
+  @@unique([moduleId, semesterId])
+}
+
+model Enrollment {
+  id               String    @id @default(cuid())
+  studentId        String
+  moduleOfferingId String
+  attempt          Int       @default(1) // 1 | 2 | 3
+  isResit          Boolean   @default(false)
+  deletedAt        DateTime? // soft delete
+  createdAt        DateTime  @default(now())
+
+  student        Student        @relation(fields: [studentId], references: [id])
+  moduleOffering ModuleOffering @relation(fields: [moduleOfferingId], references: [id])
+  marks          Mark[]
+  results        Result[]
+
+  @@unique([studentId, moduleOfferingId, attempt])
+  @@index([moduleOfferingId])
+}
+
+// ---------------------------------------------------------------------------
+// Assessment & results
+// ---------------------------------------------------------------------------
+
+model AssessmentComponent {
+  id                String @id @default(cuid())
+  moduleOfferingId  String
+  name              String
+  weight            Int // percentage; weights per offering must sum to 100 (validated in service)
+  maxMark           Int
+  componentPassMark Int?
+  sortOrder         Int    @default(0)
+
+  moduleOffering ModuleOffering @relation(fields: [moduleOfferingId], references: [id])
+  marks          Mark[]
+
+  @@unique([moduleOfferingId, name])
+}
+
+/// Configurable — seeded with defaults that are labelled as assumptions until confirmed.
+model GradingScheme {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  passMark  Int     @default(40)
+  resitCap  Int     @default(40)
+  bands     Json // e.g. [{ "grade": "A", "min": 70 }, ...]
+  isDefault Boolean @default(false)
+
+  markSheets MarkSheet[]
+}
+
+model MarkSheet {
+  id                 String          @id @default(cuid())
+  moduleOfferingId   String
+  status             MarkSheetStatus @default(DRAFT)
+  version            Int             @default(1)
+  gradingSchemeId    String?
+  submittedById      String?
+  approvedById       String?
+  publishedById      String?
+  submittedAt        DateTime?
+  approvedAt         DateTime?
+  publishedAt        DateTime?
+  scheduledPublishAt DateTime?
+  rejectReason       String?
+  lockVersion        Int             @default(0) // optimistic concurrency
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  moduleOffering ModuleOffering @relation(fields: [moduleOfferingId], references: [id])
+  gradingScheme  GradingScheme? @relation(fields: [gradingSchemeId], references: [id])
+  submittedBy    User?          @relation("SheetSubmitter", fields: [submittedById], references: [id])
+  approvedBy     User?          @relation("SheetApprover", fields: [approvedById], references: [id])
+  publishedBy    User?          @relation("SheetPublisher", fields: [publishedById], references: [id])
+  marks          Mark[]
+  results        Result[]
+  importBatches  ImportBatch[]
+
+  @@unique([moduleOfferingId, version])
+  @@index([status])
+}
+
+model Mark {
+  id           String   @id @default(cuid())
+  markSheetId  String
+  enrollmentId String
+  componentId  String
+  rawMark      Decimal? @db.Decimal(6, 2) // NULL when absent / not yet entered
+  isAbsent     Boolean  @default(false)
+  note         String?
+  updatedAt    DateTime @updatedAt
+
+  markSheet  MarkSheet           @relation(fields: [markSheetId], references: [id], onDelete: Cascade)
+  enrollment Enrollment          @relation(fields: [enrollmentId], references: [id])
+  component  AssessmentComponent @relation(fields: [componentId], references: [id])
+
+  @@unique([markSheetId, enrollmentId, componentId])
+  @@index([enrollmentId])
+}
+
+/// Immutable per mark-sheet version: a correction creates a new version, never edits a row.
+model Result {
+  id               String   @id @default(cuid())
+  enrollmentId     String
+  markSheetId      String
+  markSheetVersion Int
+  overallMark      Decimal  @db.Decimal(6, 2)
+  grade            String
+  outcome          Outcome
+  computedAt       DateTime @default(now())
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+  markSheet  MarkSheet  @relation(fields: [markSheetId], references: [id])
+
+  @@unique([markSheetId, enrollmentId])
+  @@index([enrollmentId])
+}
+
+model ImportBatch {
+  id           String       @id @default(cuid())
+  markSheetId  String
+  fileName     String
+  uploadedById String
+  rowsTotal    Int
+  rowsValid    Int
+  rowsInvalid  Int
+  errors       Json // per-row [{ row, studentId, component, level, message }]
+  rows         Json // parsed rows kept for commit
+  status       ImportStatus @default(PREVIEW)
+  createdAt    DateTime     @default(now())
+
+  markSheet  MarkSheet @relation(fields: [markSheetId], references: [id], onDelete: Cascade)
+  uploadedBy User      @relation(fields: [uploadedById], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Examinations & seating
+// ---------------------------------------------------------------------------
+
+model ExamSession {
+  id          String   @id @default(cuid())
+  title       String
+  date        DateTime
+  startTime   String // "09:00"
+  durationMin Int
+  seed        Int      @default(1) // deterministic seating
+  createdAt   DateTime @default(now())
+
+  offerings       ModuleOffering[]
+  venues          Venue[]
+  seatAllocations SeatAllocation[]
+}
+
+model Venue {
+  id            String        @id @default(cuid())
+  name          String        @unique
+  building      String
+  rows          Int
+  cols          Int
+  disabledSeats Json          @default("[]") // [{ "row": 3, "col": 4 }, ...]
+  adjacencyMode AdjacencyMode @default(ROW)
+
+  examSessions    ExamSession[]
+  seatAllocations SeatAllocation[]
+}
+
+model SeatAllocation {
+  id               String   @id @default(cuid())
+  examSessionId    String
+  venueId          String
+  studentId        String
+  moduleOfferingId String
+  row              Int
+  col              Int
+  seatLabel        String // "A1", "B12"
+  runId            String
+  createdAt        DateTime @default(now())
+
+  examSession    ExamSession    @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
+  venue          Venue          @relation(fields: [venueId], references: [id])
+  student        Student        @relation(fields: [studentId], references: [id])
+  moduleOffering ModuleOffering @relation(fields: [moduleOfferingId], references: [id])
+
+  @@unique([examSessionId, studentId])
+  @@unique([examSessionId, venueId, row, col])
+}
+
+// ---------------------------------------------------------------------------
+// Audit & notifications
+// ---------------------------------------------------------------------------
+
+/// Append-only: no update/delete route exists and a DB trigger rejects UPDATE/DELETE.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String // e.g. marksheet.approve
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  reason     String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  payload   Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
