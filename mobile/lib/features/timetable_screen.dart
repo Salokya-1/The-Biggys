@@ -53,6 +53,13 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
 
           return Column(children: [
             StaleBanner(stale: c.stale, syncedAt: c.syncedAt),
+            if (week['rolledForward'] == true)
+              Container(
+                width: double.infinity,
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Text('No classes this week — showing the week of ${fmtDate(week['weekStart'] as String)}', style: const TextStyle(fontSize: 12)),
+              ),
             SizedBox(
               height: 74,
               child: ListView.builder(

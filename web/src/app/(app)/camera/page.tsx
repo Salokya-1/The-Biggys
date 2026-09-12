@@ -17,7 +17,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ReasonField } from '@/components/reason-field';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import type { CameraRequestList, ExamSessionListItem, Venue } from '@/lib/types';
+import type { CameraRequestList, EmailOutbox, ExamSessionListItem, Venue } from '@/lib/types';
 
 const STATUS_STYLE: Record<string, string> = {
   PENDING: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100',
@@ -155,6 +155,8 @@ export default function CameraAccessPage() {
         </CardContent>
       </Card>
 
+      {can('users.manage') ? <Outbox /> : null}
+
       <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
@@ -213,5 +215,40 @@ export default function CameraAccessPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * What the system has actually sent. Kept visible because a request that quietly failed to leave
+ * the building is worse than one that was never made — you would believe IT support had been told.
+ */
+function Outbox() {
+  const q = useQuery({ queryKey: ['emails'], queryFn: () => api<EmailOutbox>('/api/emails?limit=20') });
+  if (q.isPending || q.isError || !q.data.items.length) return null;
+  return (
+    <Card className="rounded-none">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Outbox</CardTitle>
+        <CardDescription>Every message the system has sent, and whether it left the building</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader><TableRow><TableHead>Sent</TableHead><TableHead>To</TableHead><TableHead>Subject</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {q.data.items.map((m) => (
+              <TableRow key={m.id}>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{new Date(m.createdAt).toLocaleString()}</TableCell>
+                <TableCell className="whitespace-nowrap">{m.to}</TableCell>
+                <TableCell className="max-w-[26rem] truncate" title={m.body}>{m.subject}</TableCell>
+                <TableCell>
+                  <Badge className={`rounded-none ${m.status === 'SENT' ? STATUS_STYLE.APPROVED : m.status === 'FAILED' ? STATUS_STYLE.DENIED : STATUS_STYLE.PENDING}`}>{m.status}</Badge>
+                  {m.error ? <span className="ml-2 text-xs text-destructive">{m.error}</span> : null}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }

@@ -475,3 +475,9 @@ export interface CameraRequestList {
   mailerConfigured: boolean;
   items: CameraRequest[];
 }
+
+export interface EmailOutbox {
+  configured: boolean;
+  itSupportEmail: string;
+  items: { id: string; to: string; subject: string; body: string; status: 'QUEUED' | 'SENT' | 'FAILED'; error: string | null; sentAt: string | null; createdAt: string }[];
+}

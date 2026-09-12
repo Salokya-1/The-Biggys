@@ -299,14 +299,30 @@ export async function timetableRoutes(app: FastifyInstance) {
   });
 
   // teachers: everything I teach this week / today (convenience for the mobile app)
+  /**
+   * My week. A student gets their group's routine, a teacher everything they teach.
+   *
+   * If this week is empty — a reading week, the days before term, the gap between semesters —
+   * it rolls forward to the next week that has something in it and says so, because "nothing
+   * here" is a worse answer than "your next week starts on the 13th".
+   */
   app.get('/timetable/me', { preHandler: [requireRole(...STAFF, 'STUDENT')] }, async (req) => {
     const u = req.user!;
     const scope = await scopeFor(req, {});
     const today = new Date();
-    const weekStart = slotDate(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())), 1, 7);
+    const thisWeek = slotDate(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())), 1, 7);
     const filter = u.role === 'STUDENT' ? scope : { teacherId: u.id };
-    const days = await Promise.all(Array.from({ length: 7 }, (_, i) => new Date(weekStart.getTime() + i * 86400e3)).map(async (d) => ({ date: dayIso(d), items: await buildDay(d, filter) })));
-    return { weekStart: dayIso(weekStart), monday: dayIso(new Date(weekStart.getTime() + 86400e3)), days };
+    const build = async (start: Date) =>
+      Promise.all(Array.from({ length: 7 }, (_, i) => new Date(start.getTime() + i * 86400e3)).map(async (d) => ({ date: dayIso(d), items: await buildDay(d, filter) })));
+
+    let weekStart = thisWeek;
+    let days = await build(weekStart);
+    for (let ahead = 1; ahead <= 4 && days.every((d) => d.items.length === 0); ahead++) {
+      weekStart = new Date(thisWeek.getTime() + ahead * 7 * 86400e3);
+      days = await build(weekStart);
+    }
+    const rolledForward = dayIso(weekStart) !== dayIso(thisWeek);
+    return { weekStart: dayIso(weekStart), monday: dayIso(new Date(weekStart.getTime() + 86400e3)), rolledForward, days };
   });
 
   // staff directory of teachers (for cover / teacher change pickers)
