@@ -27,7 +27,8 @@ async function issueTokens(user: AuthUser) {
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  app.post('/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+  // Per-IP limit; the account lockout below is the per-user brake. 30/min tolerates a shared campus NAT.
+  app.post('/login', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
     const { email, password } = parse(loginBody, req.body);
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
 
