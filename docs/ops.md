@@ -4,9 +4,9 @@ Fill the placeholders when the services are created (never paste secrets here).
 
 | Piece | Where | URL |
 |---|---|---|
-| API (`backend/`) | Antideploy, auto-deploys `main` | `{{ANTIDEPLOY_APP_URL}}` |
-| Database | Neon project `{{NEON_PROJECT}}` (pooled connection string in `DATABASE_URL`) | — |
-| Web (`web/`) | Vercel, root directory `web/`, production tracks `main` | `{{VERCEL_URL}}` |
+| API (`backend/`) | Render `biggys-api` (Oregon, free), auto-deploys `main` | https://biggys-api.onrender.com |
+| Database | Render `biggys-db` (Oregon, free PostgreSQL 18) | — |
+| Web (`web/`) | Render `biggys-web` (Singapore, free), root directory `web/`, tracks `main` | https://biggys-web.onrender.com |
 | APK | GitHub Release `v1.0.0-hackathon` | `https://github.com/Salokya-1/The-Biggys/releases` |
 | Status page | UptimeRobot public page | `{{STATUS_PAGE_URL}}` |
 

@@ -75,10 +75,14 @@ Mobile: `cd mobile && flutter pub get && flutter run` (emulator reaches the API 
 
 | | URL |
 |---|---|
-| Web | `{{VERCEL_URL}}` |
-| API | `{{ANTIDEPLOY_APP_URL}}` (`/health/ready`, `/health/version`) |
+| Web | https://biggys-web.onrender.com |
+| API | https://biggys-api.onrender.com (`/health/ready`, `/health/version`) |
 | APK | GitHub Release `v1.0.0-hackathon` |
 | Status page | `{{STATUS_PAGE_URL}}` |
+
+Both run on Render's free tier from `render.yaml`, so the first request after a quiet spell takes
+about 50 seconds while the instance wakes. The demo data loads itself the first time the database
+is empty; sign in with any account below.
 
 ## Demo accounts
 
