@@ -85,9 +85,16 @@ async function main() {
   });
 
   // ---------- programmes, intakes, semesters ----------
+  // Real Islington College programme catalogue (islington.edu.np, London Metropolitan University awards).
+  // `history: true` programmes get three intakes with published results and a live pipeline; the others
+  // have just the Sep 2026 intake in its first semester.
   const programmes = [
-    { code: 'BSCCS', name: 'BSc (Hons) Computing', level: 'Undergraduate', idPrefix: '01' },
-    { code: 'BIBM', name: 'BA (Hons) International Business Management', level: 'Undergraduate', idPrefix: '02' },
+    { code: 'BSCC', name: 'BSc (Hons) Computing', level: 'Undergraduate (London Metropolitan University)', idPrefix: '01', history: true },
+    { code: 'BABA', name: 'BA (Hons) Business Administration', level: 'Undergraduate (London Metropolitan University)', idPrefix: '02', history: true },
+    { code: 'BSCNIS', name: 'BSc (Hons) Computer Networking & IT Security', level: 'Undergraduate (London Metropolitan University)', idPrefix: '03', history: false },
+    { code: 'BSCMT', name: 'BSc (Hons) Multimedia Technologies', level: 'Undergraduate (London Metropolitan University)', idPrefix: '04', history: false },
+    { code: 'BSCAI', name: 'BSc (Hons) Computing with Artificial Intelligence', level: 'Undergraduate (London Metropolitan University)', idPrefix: '05', history: false },
+    { code: 'BAAF', name: 'BA (Hons) Accounting & Finance', level: 'Undergraduate (London Metropolitan University)', idPrefix: '06', history: false },
   ];
   // semester windows by number (academic year runs Sep–Jan, Feb–Jun)
   const semWindow = (startYear: number, n: number) => {
@@ -102,26 +109,43 @@ async function main() {
     { label: 'Sep 2026', year: 2026, semesters: 1, published: 0, inPipeline: null },
   ];
 
+  // Module titles follow the programme pages on islington.edu.np (Level 4 = semesters 1–2, Level 5 = 3–4).
   const modulesByProgramme: Record<string, { code: string; title: string; sem: number; leader: string; comps: ComponentSpec[] }[]> = {
-    BSCCS: [
-      { code: 'CS4001', title: 'Programming Fundamentals', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
-      { code: 'CS4002', title: 'Computer Systems', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
-      { code: 'CS4003', title: 'Database Systems', sem: 2, leader: leaderCS.id, comps: cw60ex40(35) },
-      { code: 'CS4004', title: 'Web Development', sem: 2, leader: leaderCS.id, comps: three() },
-      { code: 'CS5001', title: 'Software Engineering', sem: 3, leader: leaderCS2.id, comps: cw60ex40() },
-      { code: 'CS5002', title: 'Computer Networks', sem: 3, leader: leaderCS2.id, comps: cw60ex40() },
-      { code: 'CS5003', title: 'Artificial Intelligence', sem: 4, leader: leaderCS2.id, comps: three() },
-      { code: 'CS5004', title: 'Cyber Security', sem: 4, leader: leaderCS2.id, comps: cw60ex40() },
+    BSCC: [
+      { code: 'CS4001', title: 'Programming', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
+      { code: 'CS4002', title: 'Logic and Problem Solving', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
+      { code: 'CS4003', title: 'Computer Hardware and Software Architectures', sem: 2, leader: leaderCS.id, comps: cw60ex40(35) },
+      { code: 'CS4004', title: 'Fundamentals of Computing', sem: 2, leader: leaderCS.id, comps: three() },
+      { code: 'CS5001', title: 'Databases', sem: 3, leader: leaderCS2.id, comps: cw60ex40() },
+      { code: 'CS5002', title: 'Software Engineering', sem: 3, leader: leaderCS2.id, comps: cw60ex40() },
+      { code: 'CS5003', title: 'Advanced Programming and Technologies', sem: 4, leader: leaderCS2.id, comps: three() },
+      { code: 'CS5004', title: 'Data and Web Development', sem: 4, leader: leaderCS2.id, comps: cw60ex40() },
     ],
-    BIBM: [
-      { code: 'BM4001', title: 'Principles of Management', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
-      { code: 'BM4002', title: 'Business Economics', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
-      { code: 'BM4003', title: 'Marketing Essentials', sem: 2, leader: leaderBM.id, comps: three() },
-      { code: 'BM4004', title: 'Accounting for Managers', sem: 2, leader: leaderBM.id, comps: cw60ex40(35) },
-      { code: 'BM5001', title: 'Organisational Behaviour', sem: 3, leader: leaderBM.id, comps: cw60ex40() },
+    BABA: [
+      { code: 'BM4001', title: 'Business Management and Practice', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
+      { code: 'BM4002', title: 'Marketing Principles', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
+      { code: 'BM4003', title: 'Financial Accounting for Business', sem: 2, leader: leaderBM.id, comps: three() },
+      { code: 'BM4004', title: 'Business Economics', sem: 2, leader: leaderBM.id, comps: cw60ex40(35) },
+      { code: 'BM5001', title: 'Managing People in Organisations', sem: 3, leader: leaderBM.id, comps: cw60ex40() },
       { code: 'BM5002', title: 'Operations Management', sem: 3, leader: leaderBM.id, comps: cw60ex40() },
       { code: 'BM5003', title: 'Strategic Management', sem: 4, leader: leaderBM.id, comps: three() },
-      { code: 'BM5004', title: 'International Business', sem: 4, leader: leaderBM.id, comps: cw60ex40() },
+      { code: 'BM5004', title: 'Digital Business', sem: 4, leader: leaderBM.id, comps: cw60ex40() },
+    ],
+    BSCNIS: [
+      { code: 'NS4001', title: 'Introduction to Networking', sem: 1, leader: leaderCS2.id, comps: cw60ex40() },
+      { code: 'NS4002', title: 'Computer Systems and Architecture', sem: 1, leader: leaderCS2.id, comps: cw60ex40() },
+    ],
+    BSCMT: [
+      { code: 'MT4001', title: 'Digital Media Fundamentals', sem: 1, leader: leaderCS2.id, comps: three() },
+      { code: 'MT4002', title: 'Web Design and Development', sem: 1, leader: leaderCS2.id, comps: cw60ex40() },
+    ],
+    BSCAI: [
+      { code: 'AI4001', title: 'Programming', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
+      { code: 'AI4002', title: 'Mathematics for Artificial Intelligence', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
+    ],
+    BAAF: [
+      { code: 'AF4001', title: 'Introduction to Financial Accounting', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
+      { code: 'AF4002', title: 'Business Economics', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
     ],
   };
   function cw60ex40(examMin?: number): ComponentSpec[] {
@@ -176,7 +200,7 @@ async function main() {
       modules.set(m.code, { id: mod.id, sem: m.sem, comps: m.comps });
     }
 
-    for (const it of intakes) {
+    for (const it of p.history ? intakes : intakes.filter((i) => i.label === 'Sep 2026')) {
       const intake = await prisma.intake.create({ data: { programmeId: programme.id, label: it.label, startDate: date(it.year, 9, 15) } });
       const semesters: { id: string; number: number; end: Date }[] = [];
       for (let n = 1; n <= it.semesters; n++) {
@@ -194,7 +218,7 @@ async function main() {
         const studentId = `${String(it.year).slice(2)}${p.idPrefix}${String(i + 1).padStart(4, '0')}`;
         // demo logins: first 5 students of Sep 2025 BSCCS; everyone else gets <id>@student.demo
         let email = `${studentId}@student.demo`;
-        if (p.code === 'BSCCS' && it.label === 'Sep 2025' && demoIdx < demoStudentEmails.length) email = demoStudentEmails[demoIdx++];
+        if (p.code === 'BSCC' && it.label === 'Sep 2025' && demoIdx < demoStudentEmails.length) email = demoStudentEmails[demoIdx++];
         const displayName = email === 'student1@demo' ? 'Dipesh Karki' : name;
         const user = await prisma.user.create({ data: { email, name: displayName, role: 'STUDENT', passwordHash } });
         const s = await prisma.student.create({
@@ -344,10 +368,10 @@ async function main() {
   }
 
   // ---------- deliberate data-quality issues ----------
-  const dq = allStudents.filter((s) => s.intakeLabel === 'Sep 2024' && s.programme === 'BIBM');
+  const dq = allStudents.filter((s) => s.intakeLabel === 'Sep 2024' && s.programme === 'BABA');
   await prisma.student.update({ where: { id: dq[0].id }, data: { currentSemesterId: null } }); // no current semester
   await prisma.student.update({ where: { id: dq[1].id }, data: { currentSemesterId: null, status: 'DEFERRED' } });
-  const wrongIntake = await prisma.intake.findFirst({ where: { label: 'Sep 2025', programme: { code: 'BSCCS' } } });
+  const wrongIntake = await prisma.intake.findFirst({ where: { label: 'Sep 2025', programme: { code: 'BSCC' } } });
   await prisma.student.update({ where: { id: dq[2].id }, data: { intakeId: wrongIntake!.id } }); // intake belongs to another programme
   await prisma.student.update({ where: { id: dq[3].id }, data: { status: 'WITHDRAWN' } });
   await prisma.student.update({ where: { id: dq[4].id }, data: { status: 'WITHDRAWN', deletedAt: date(2026, 3, 1) } });
@@ -361,7 +385,7 @@ async function main() {
   const s1Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2026' && o.sem === 1 && ['CS4001', 'BM4001'].includes(o.code));
   await prisma.examSession.create({
     data: {
-      title: 'Semester 2 Resit Exams — Databases & Marketing',
+      title: 'Semester 2 Resit Exams — Computer Architectures & Financial Accounting',
       date: date(2026, 9, 19),
       startTime: '09:00',
       durationMin: 120,
@@ -372,7 +396,7 @@ async function main() {
   });
   const midterm = await prisma.examSession.create({
     data: {
-      title: 'Semester 1 Mid-term — Programming & Management (Sep 2026 intake)',
+      title: 'Semester 1 Mid-term — Programming & Business Management (Sep 2026 intake)',
       date: date(2026, 10, 24),
       startTime: '13:00',
       durationMin: 90,
@@ -403,8 +427,8 @@ async function main() {
   const dipesh = allStudents.find((s) => s.name === 'Dipesh Karki')!;
   await prisma.notification.createMany({
     data: [
-      { userId: dipesh.userId!, type: 'result.published', title: 'CS4002 result published', body: 'Your Computer Systems result is now available.', payload: { module: 'CS4002' }, createdAt: date(2026, 2, 20), readAt: date(2026, 2, 21) },
-      { userId: dipesh.userId!, type: 'result.published', title: 'CS4001 result published', body: 'Your Programming Fundamentals result is now available.', payload: { module: 'CS4001' }, createdAt: date(2026, 2, 20) },
+      { userId: dipesh.userId!, type: 'result.published', title: 'CS4002 result published', body: 'Your Logic and Problem Solving result is now available.', payload: { module: 'CS4002' }, createdAt: date(2026, 2, 20), readAt: date(2026, 2, 21) },
+      { userId: dipesh.userId!, type: 'result.published', title: 'CS4001 result published', body: 'Your Programming result is now available.', payload: { module: 'CS4001' }, createdAt: date(2026, 2, 20) },
       { userId: leaderCS.id, type: 'marksheet.submitted', title: 'CS4004 marks submitted for review', body: 'Chetna Gurung submitted the CS4004 mark sheet (v1).', payload: { module: 'CS4004' }, createdAt: date(2026, 9, 11, 16) },
       { userId: admin.id, type: 'marksheet.approved', title: 'BM4004 approved — ready to publish', body: 'Sarita Joshi approved the BM4004 mark sheet.', payload: { module: 'BM4004' }, createdAt: date(2026, 9, 11, 17) },
     ],
