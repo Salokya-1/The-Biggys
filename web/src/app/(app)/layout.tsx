@@ -7,6 +7,7 @@ import { Armchair, BookOpen, Building2, CalendarDays, ClipboardCheck, Graduation
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { NotificationsBell } from '@/components/notifications';
 import { ROLE_LABEL, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/lib/types';
@@ -84,6 +85,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="border-t p-4">
+          <div className="mb-2"><NotificationsBell isStudent={user.role === 'STUDENT'} /></div>
           <p className="truncate text-sm font-medium">{user.name}</p>
           <Badge variant="secondary" className="mt-1">{ROLE_LABEL[user.role]}</Badge>
           <Button
