@@ -15,6 +15,9 @@ final examsProvider = FutureProvider.autoDispose<Cached>((ref) => ref.watch(apiP
 /// Notifications for the signed-in user.
 final notificationsProvider = FutureProvider.autoDispose<Cached>((ref) => ref.watch(apiProvider).cached('notifications', '/api/notifications'));
 
+/// This week's classes: a student's own group routine, or everything a teacher teaches.
+final myWeekProvider = FutureProvider.autoDispose<Cached>((ref) => ref.watch(apiProvider).cached('my-week', '/api/timetable/me'));
+
 /// Staff: mark sheets in scope (approval queue).
 final sheetsProvider = FutureProvider.autoDispose<Cached>((ref) => ref.watch(apiProvider).cached('sheets', '/api/marksheets'));
 
