@@ -481,3 +481,28 @@ export interface EmailOutbox {
   itSupportEmail: string;
   items: { id: string; to: string; subject: string; body: string; status: 'QUEUED' | 'SENT' | 'FAILED'; error: string | null; sentAt: string | null; createdAt: string }[];
 }
+
+export interface AtRisk {
+  offering: { id: string; module: { code: string; title: string }; teachers: { id: string; name: string }[] };
+  enrolled: number;
+  students: { id: string; studentId: string; name: string; section: string | null; why: string }[];
+}
+
+export interface ClassAlertRow {
+  id: string;
+  date: string;
+  kind: string;
+  note: string | null;
+  status: 'OPEN' | 'COVER_ASSIGNED' | 'RESOLVED' | 'DISMISSED';
+  createdAt: string;
+  raisedBy: { name: string; role: string };
+  cover: { name: string } | null;
+  slot: {
+    startTime: string;
+    endTime: string;
+    section: { name: string };
+    teacher: { name: string };
+    venue: { name: string } | null;
+    moduleOffering: { module: { code: string; title: string } };
+  };
+}

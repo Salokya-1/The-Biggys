@@ -322,7 +322,7 @@ export default function TimetablePage() {
         <Skeleton className="h-[420px] w-full" />
       ) : wk.data ? (
         <div className="overflow-x-auto border bg-card">
-          <div className="grid min-w-[900px]" style={{ gridTemplateColumns: '92px repeat(5, minmax(0, 1fr))' }}>
+          <div className="grid min-w-[1080px]" style={{ gridTemplateColumns: `92px repeat(${weekdays.length}, minmax(0, 1fr))` }}>
             <div className="border-b border-r bg-muted/40 p-2 text-[11px] text-muted-foreground">Period</div>
             {weekdays.map((d, i) => (
               <button key={d.date} onClick={() => setSelectedDay(d.date)} className={cn('border-b border-r px-2 py-2 text-left text-xs hover:bg-accent', d.date === today && 'bg-primary/10')}>
@@ -530,12 +530,26 @@ export default function TimetablePage() {
   );
 }
 
+/** Raise "nobody has turned up" for a class, from the day it is happening. */
+function useClassAlert(qc: ReturnType<typeof useQueryClient>) {
+  return useMutation({
+    mutationFn: (v: { item: Item }) =>
+      api<{ message: string; cover?: { name: string } | null }>(`/api/timetable/slots/${v.item.slotId}/alert`, { method: 'POST', body: { date: v.item.date } }),
+    onSuccess: (r) => {
+      toast.success('RTE has been told', { description: r.message, duration: 8000 });
+      void qc.invalidateQueries({ queryKey: ['tt'] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Could not raise the alert'),
+  });
+}
+
 function DayView({ day, sem, teachers, venues, onClose }: { day: { date: string; items: Item[] }; sem: Semester; teachers: Teacher[]; venues: Venue[]; onClose: () => void }) {
   const { user, can } = useAuth();
   const qc = useQueryClient();
   const canEdit = can('timetable.write');
   const isStudent = user?.role === 'STUDENT';
   const [action, setAction] = useState<{ kind: 'CANCEL' | 'TEACHER' | 'ROOM' | 'RESCHEDULE' | 'TEACHER_ABSENCE' | 'STUDENT_ABSENCE' | 'SECTION_SWAP'; item?: Item } | null>(null);
+  const alert = useClassAlert(qc);
   const [reason, setReason] = useState('');
   const [reasonOk, setReasonOk] = useState(true);
   const [teacherId, setTeacherId] = useState('');
@@ -621,6 +635,16 @@ function DayView({ day, sem, teachers, venues, onClose }: { day: { date: string;
                 )}
                 {(user?.role === 'LECTURER' || user?.role === 'MODULE_LEADER') && it.teacher?.id === user.id && <Button size="xs" variant="outline" onClick={() => setAction({ kind: 'TEACHER_ABSENCE', item: it })}>Report absence</Button>}
                 {isStudent && <Button size="xs" variant="outline" onClick={() => setAction({ kind: 'STUDENT_ABSENCE', item: it })}>Request absence</Button>}
+                {/* The room is full of students and nobody has come to teach: one tap tells RTE. */}
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="border-brand-orange text-brand-orange"
+                  disabled={alert.isPending}
+                  onClick={() => alert.mutate({ item: it })}
+                >
+                  No teacher here
+                </Button>
               </div>
             )}
           </div>

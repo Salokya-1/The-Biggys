@@ -98,7 +98,7 @@ export default function DashboardPage() {
         </Card>
         <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Overdue</CardTitle><CardDescription>Waiting more than {d.funnel.overdueDays} days in a review state</CardDescription></CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="max-h-64 space-y-2 overflow-y-auto text-sm">
             {d.funnel.overdue.length === 0 && <p className="text-muted-foreground">Nothing overdue.</p>}
             {d.funnel.overdue.map((o) => (
               <Link key={o.id} href={`/marksheets/${o.id}`} className="flex items-center justify-between rounded-none border p-2 hover:bg-muted">
@@ -112,7 +112,7 @@ export default function DashboardPage() {
 
       <Card className="rounded-none">
         <CardHeader className="pb-2"><CardTitle className="text-base">Publication status</CardTitle><CardDescription>Every open mark sheet, with missing marks and who holds it</CardDescription></CardHeader>
-        <CardContent>
+        <CardContent className="max-h-72 overflow-y-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Module</TableHead><TableHead>Cohort</TableHead><TableHead>Lecturer</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Marks</TableHead><TableHead className="text-right">Missing</TableHead><TableHead>Updated</TableHead></TableRow></TableHeader>
             <TableBody>
@@ -136,7 +136,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Exam readiness</CardTitle><CardDescription>Upcoming sessions: seating generated and venue utilisation</CardDescription></CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="max-h-64 space-y-2 overflow-y-auto text-sm">
             {d.exams.length === 0 && <p className="text-muted-foreground">No upcoming sessions.</p>}
             {d.exams.map((e) => (
               <Link key={e.id} href={`/exams/${e.id}`} className="block rounded-none border p-3 hover:bg-muted">
@@ -152,7 +152,7 @@ export default function DashboardPage() {
         </Card>
         <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Faculty workload (current semesters)</CardTitle><CardDescription>Teaching load per lecturer — offerings, students and credits</CardDescription></CardHeader>
-          <CardContent>
+          <CardContent className="max-h-72 overflow-y-auto">
             <Table>
               <TableHeader><TableRow><TableHead>Staff</TableHead><TableHead className="text-right">Offerings</TableHead><TableHead className="text-right">Students</TableHead><TableHead className="text-right">Credits</TableHead><TableHead>Modules</TableHead></TableRow></TableHeader>
               <TableBody>
@@ -190,7 +190,7 @@ export default function DashboardPage() {
         </Card>
         <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Biggest movers</CardTitle><CardDescription>Pass-rate change against the previous offering</CardDescription></CardHeader>
-          <CardContent>
+          <CardContent className="max-h-72 overflow-y-auto">
             <Table>
               <TableHeader><TableRow><TableHead>Module</TableHead><TableHead className="text-right">Latest</TableHead><TableHead className="text-right">Previous</TableHead><TableHead className="text-right">Δ</TableHead></TableRow></TableHeader>
               <TableBody>
@@ -213,7 +213,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">At-risk students</CardTitle><CardDescription>Under review (any fail or two outstanding resits) or with one outstanding resit</CardDescription></CardHeader>
-          <CardContent>
+          <CardContent className="max-h-72 overflow-y-auto">
             <Table>
               <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Cohort</TableHead><TableHead>Standing</TableHead></TableRow></TableHeader>
               <TableBody>
@@ -232,7 +232,7 @@ export default function DashboardPage() {
         </Card>
         <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Data quality</CardTitle><CardDescription>What the spreadsheets were hiding — surfaced, not silently fixed</CardDescription></CardHeader>
-          <CardContent className="space-y-3 text-sm">
+          <CardContent className="max-h-72 space-y-3 overflow-y-auto text-sm">
             {dqTotal === 0 && <p className="text-muted-foreground">No issues detected.</p>}
             {dq.missingResults.map((m) => (
               <div key={m.code} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span><strong>{m.missing}</strong> published enrolment{m.missing === 1 ? '' : 's'} on <strong>{m.code}</strong> without a result (marks never completed)</span></div>

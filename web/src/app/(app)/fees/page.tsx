@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 
 interface Invoice {
   id: string;
-  amount: string | number;
+  amount: string | number | null;
   currency: string;
   status: 'UNPAID' | 'PAID' | 'WAIVED';
   dueDate: string;
@@ -32,7 +32,11 @@ export default function FeesPage() {
   const qc = useQueryClient();
   const [status, setStatus] = useState('all');
   const [q, setQ] = useState('');
-  const fees = useQuery({ queryKey: ['fees', status, q], queryFn: () => api<{ items: Invoice[]; summary: { status: string; count: number; amount: number }[] }>(`/api/fees${qs({ status, q })}`) });
+  const fees = useQuery({ queryKey: ['fees', status, q], queryFn: () => api<{ showAmounts: boolean; items: Invoice[]; summary: { status: string; count: number; amount: number | null }[] }>(`/api/fees${qs({ status, q })}`) });
+  // RTE works this ledger on paid or unpaid; the sums belong to finance and are withheld unless
+  // the account has been granted "See fee amounts".
+  const showAmounts = fees.data?.showAmounts ?? false;
+  const money = (v: string | number | null | undefined) => (showAmounts && v !== null && v !== undefined ? fmt(v) : 'xxxxxx');
   const update = useMutation({
     mutationFn: ({ id, status }: { id: string; status: Invoice['status'] }) => api(`/api/fees/${id}`, { method: 'PATCH', body: { status, method: status === 'PAID' ? 'Cash' : undefined } }),
     onSuccess: () => {
@@ -51,7 +55,7 @@ export default function FeesPage() {
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         {(['PAID', 'UNPAID', 'WAIVED'] as const).map((s) => (
-          <Card key={s} className="rounded-none"><CardHeader className="pb-1"><CardDescription>{s.charAt(0) + s.slice(1).toLowerCase()}</CardDescription><CardTitle className="text-2xl">{summary[s]?.count ?? 0} <span className="text-sm font-normal text-muted-foreground">· {fmt(summary[s]?.amount ?? 0)}</span></CardTitle></CardHeader></Card>
+          <Card key={s} className="rounded-none"><CardHeader className="pb-1"><CardDescription>{s.charAt(0) + s.slice(1).toLowerCase()}</CardDescription><CardTitle className="text-2xl">{summary[s]?.count ?? 0} <span className="text-sm font-normal text-muted-foreground">· {money(summary[s]?.amount)}</span></CardTitle></CardHeader></Card>
         ))}
       </div>
       <div className="flex flex-wrap gap-2">
@@ -72,7 +76,7 @@ export default function FeesPage() {
                 <TableCell><div className="font-medium">{i.student.name}</div><div className="font-mono text-xs text-muted-foreground">{i.student.studentId}</div></TableCell>
                 <TableCell className="text-xs">{i.semester.intake.programme.code} {i.semester.intake.label}{i.student.section ? ` · ${i.student.section.name}` : ''}</TableCell>
                 <TableCell>Sem {i.semester.number}</TableCell>
-                <TableCell className="text-right font-mono">{fmt(i.amount)}</TableCell>
+                <TableCell className="text-right font-mono">{money(i.amount)}</TableCell>
                 <TableCell className="text-xs">{i.dueDate.slice(0, 10)}</TableCell>
                 <TableCell><Badge variant="outline" className={cn('border-transparent', STYLE[i.status])}>{i.status}</Badge></TableCell>
                 <TableCell className="text-xs text-muted-foreground">{i.paidAt ? `${i.paidAt.slice(0, 10)} · ${i.method} · ${i.reference}` : '—'}</TableCell>

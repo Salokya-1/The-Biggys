@@ -33,6 +33,9 @@ export const ACTIONS = [
   // Finance
   { key: 'fees.read', label: 'View the fee ledger', group: 'Finance', roles: ['ADMIN'] },
   { key: 'fees.write', label: 'Record payments, waivers and invoices', group: 'Finance', roles: ['ADMIN'] },
+  // Deliberately held by no role: RTE runs the exam and admit-card gate on paid/unpaid, and does
+  // not need the sums. Grant it to the finance staff who do.
+  { key: 'fees.amount', label: 'See fee amounts (finance)', group: 'Finance', roles: [] },
   // Administration
   { key: 'dashboard.read', label: 'View the operations dashboard', group: 'Administration', roles: ['ADMIN', 'MODULE_LEADER'] },
   { key: 'audit.read', label: 'Read the audit log', group: 'Administration', roles: ['ADMIN'] },

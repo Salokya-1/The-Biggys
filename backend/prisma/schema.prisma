@@ -127,6 +127,9 @@ model User {
   lecturedOfferings   ModuleOffering[]      @relation("OfferingLecturer")
   coLecturedOfferings ModuleOffering[]      @relation("OfferingCoLecturer")
   cameraRequests      CameraAccessRequest[] @relation("CameraRequester")
+  supportClasses      SupportClass[]        @relation("SupportClassTeacher")
+  raisedClassAlerts   ClassAlert[]          @relation("ClassAlertRaisedBy")
+  coveredClassAlerts  ClassAlert[]          @relation("ClassAlertCover")
   submittedSheets     MarkSheet[]           @relation("SheetSubmitter")
   approvedSheets      MarkSheet[]           @relation("SheetApprover")
   publishedSheets     MarkSheet[]           @relation("SheetPublisher")
@@ -245,6 +248,7 @@ model Student {
   section         Section?         @relation(fields: [sectionId], references: [id])
   currentSemester Semester?        @relation("CurrentSemester", fields: [currentSemesterId], references: [id])
   enrollments     Enrollment[]
+  supportClasses  SupportClass[]   @relation("SupportClassStudents")
   seatAllocations SeatAllocation[]
   feeInvoices     FeeInvoice[]
   admitCards      AdmitCard[]
@@ -290,6 +294,7 @@ model ModuleOffering {
   examSessions    ExamSession[]
   seatAllocations SeatAllocation[]
   slots           TimetableSlot[]
+  supportClasses  SupportClass[]
 
   @@unique([moduleId, semesterId])
 }
@@ -454,6 +459,7 @@ model TimetableSlot {
   exceptions     SlotException[]
   requests       ChangeRequest[]
   cameraRequests CameraAccessRequest[] @relation("SlotCameraRequests")
+  alerts         ClassAlert[]
   /// Every group in the room. A lecture combines the whole cohort (C1+C2+…); a tutorial or
   /// workshop has the one group in `section`.
   groups         Section[]             @relation("SlotGroups")
@@ -573,6 +579,7 @@ model Venue {
   slotExceptions  SlotException[]
   invigilations   ExamInvigilator[]
   cameraRequests  CameraAccessRequest[]
+  supportClasses  SupportClass[]
 }
 
 model SeatAllocation {
@@ -743,4 +750,61 @@ enum EmailStatus {
   QUEUED
   SENT
   FAILED
+}
+
+/// An extra class laid on for the students of one module who are at risk, so the help goes to the
+/// people who need it rather than being repeated to the whole cohort.
+model SupportClass {
+  id               String   @id @default(cuid())
+  moduleOfferingId String
+  teacherId        String
+  venueId          String?
+  date             DateTime
+  startTime        String
+  endTime          String
+  reason           String
+  createdById      String
+  createdAt        DateTime @default(now())
+
+  moduleOffering ModuleOffering @relation(fields: [moduleOfferingId], references: [id])
+  teacher        User           @relation("SupportClassTeacher", fields: [teacherId], references: [id])
+  venue          Venue?         @relation(fields: [venueId], references: [id])
+  students       Student[]      @relation("SupportClassStudents")
+
+  @@index([moduleOfferingId, date])
+}
+
+/// "Nobody has turned up to teach this." Raised by a student from their own timetable, it reaches
+/// RTE immediately and, where a free teacher of that module exists, assigns cover on the spot.
+model ClassAlert {
+  id             String           @id @default(cuid())
+  slotId         String
+  date           DateTime
+  kind           ClassAlertKind   @default(TEACHER_ABSENT)
+  note           String?
+  status         ClassAlertStatus @default(OPEN)
+  raisedById     String
+  coverId        String?
+  resolvedAt     DateTime?
+  resolutionNote String?
+  createdAt      DateTime         @default(now())
+
+  slot     TimetableSlot @relation(fields: [slotId], references: [id])
+  raisedBy User          @relation("ClassAlertRaisedBy", fields: [raisedById], references: [id])
+  cover    User?         @relation("ClassAlertCover", fields: [coverId], references: [id])
+
+  @@index([status, date])
+}
+
+enum ClassAlertKind {
+  TEACHER_ABSENT
+  NO_TEACHER_ASSIGNED
+  ROOM_PROBLEM
+}
+
+enum ClassAlertStatus {
+  OPEN
+  COVER_ASSIGNED
+  RESOLVED
+  DISMISSED
 }

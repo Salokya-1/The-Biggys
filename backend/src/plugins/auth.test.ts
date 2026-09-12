@@ -7,8 +7,18 @@ describe('permission matrix', () => {
     expect(student.sort()).toEqual(['assistant.use', 'request.create', 'timetable.read'].sort());
   });
 
-  it('admins hold everything', () => {
-    expect(effectiveActions('ADMIN')).toHaveLength(ACTIONS.length);
+  // Held by nobody by default: RTE gates admit cards on paid or unpaid and does not need the
+  // sums, so an admin sees the ledger without the amounts until finance is granted them.
+  const GRANT_ONLY = ['fees.amount'];
+
+  it('admins hold everything except the capabilities reserved for an explicit grant', () => {
+    expect(effectiveActions('ADMIN')).toHaveLength(ACTIONS.length - GRANT_ONLY.length);
+    for (const key of GRANT_ONLY) expect(roleHas('ADMIN', key as never)).toBe(false);
+  });
+
+  it('a grant-only capability can still be given to one person', () => {
+    expect(can('ADMIN', 'fees.amount', { grant: ['fees.amount'] })).toBe(true);
+    expect(can('ADMIN', 'fees.amount', undefined)).toBe(false);
   });
 
   it('only admins publish, generate seating, manage users and read the audit log', () => {
@@ -43,10 +53,10 @@ describe('permission matrix', () => {
     expect(can('LECTURER', 'fees.write', { grant: ['fees.write'], revoke: ['fees.write'] })).toBe(false);
   });
 
-  it('every action belongs to a group and has at least one default role', () => {
+  it('every action belongs to a group, and only the reserved ones have no default role', () => {
     for (const a of ACTIONS) {
       expect(a.group.length).toBeGreaterThan(0);
-      expect(a.roles.length).toBeGreaterThan(0);
+      if (!GRANT_ONLY.includes(a.key)) expect(a.roles.length).toBeGreaterThan(0);
     }
   });
 });

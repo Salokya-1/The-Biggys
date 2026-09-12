@@ -58,9 +58,10 @@ export default function ModulesPage() {
       {offerings.isError && (
         <Alert variant="destructive"><AlertDescription>{(offerings.error as Error).message}</AlertDescription></Alert>
       )}
-      <div className="overflow-x-auto rounded-md border bg-background">
+      {/* Boxed and scrolled in place: 74 offerings should not make the page itself a mile long. */}
+      <div className="max-h-[calc(100dvh-16rem)] overflow-auto rounded-md border bg-background">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>
               <TableHead>Module</TableHead>
               <TableHead>Cohort</TableHead>

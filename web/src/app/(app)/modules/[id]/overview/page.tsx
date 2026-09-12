@@ -1,19 +1,25 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ArrowLeft, FileSpreadsheet, Printer, Users } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, LifeBuoy, Printer, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { api, downloadWithAuth } from '@/lib/api';
-import type { ModuleOverview } from '@/lib/types';
+import { useAuth } from '@/lib/auth';
+import type { AtRisk, ModuleOverview } from '@/lib/types';
 
 const GRADE_COLOUR: Record<string, string> = { A: '#2f6aaf', B: '#41448b', C: '#e37e3f', D: '#f4d32a', F: '#ce2626' };
 const OUTCOME_COLOUR: Record<string, string> = { Passed: '#2f6aaf', Resits: '#e37e3f', Failed: '#ce2626', Deferred: '#767676', Awaiting: '#a3a3a3' };
@@ -164,6 +170,8 @@ export default function ModuleOverviewPage() {
         </Card>
       </div>
 
+      <AtRiskPanel offeringId={id} />
+
       <Card className="rounded-none">
         <CardHeader className="pb-2"><CardTitle className="text-base">By section</CardTitle></CardHeader>
         <CardContent>
@@ -230,5 +238,99 @@ export default function ModuleOverviewPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+/**
+ * The students on this module who are actually struggling, and one button to lay on extra
+ * teaching for exactly them — rather than repeating the material to a cohort that passed.
+ */
+function AtRiskPanel({ offeringId }: { offeringId: string }) {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const [form, setForm] = useState<{ date: string; minutes: number; reason: string } | null>(null);
+
+  const q = useQuery({ queryKey: ['at-risk', offeringId], queryFn: () => api<AtRisk>(`/api/offerings/${offeringId}/at-risk`) });
+  const create = useMutation({
+    mutationFn: (f: { date: string; minutes: number; reason: string }) =>
+      api<{ when: string; venueName: string; students: unknown[] }>(`/api/offerings/${offeringId}/support-class`, { method: 'POST', body: f }),
+    onSuccess: (r) => {
+      setForm(null);
+      qc.invalidateQueries({ queryKey: ['at-risk', offeringId] });
+      toast.success('Support class booked', { description: `${r.when} in ${r.venueName} — ${r.students.length} students told.`, duration: 9000 });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (q.isPending || q.isError) return null;
+  const students = q.data.students;
+
+  return (
+    <Card className="rounded-none">
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">At risk on this module</CardTitle>
+            <CardDescription>
+              {students.length === 0
+                ? 'Nobody is failing, resitting or borderline.'
+                : `${students.length} of ${q.data.enrolled} students failed, are resitting, or are sitting under 45.`}
+            </CardDescription>
+          </div>
+          {students.length > 0 && can('timetable.write') ? (
+            <Button
+              size="sm"
+              onClick={() => setForm({ date: new Date(Date.now() + 3 * 86400e3).toISOString().slice(0, 10), minutes: 60, reason: 'Extra support for the students at risk on this module' })}
+            >
+              <LifeBuoy className="mr-1 h-4 w-4" /> Lay on a support class
+            </Button>
+          ) : null}
+        </div>
+      </CardHeader>
+      {students.length > 0 ? (
+        <CardContent className="max-h-72 overflow-y-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Name</TableHead><TableHead>Group</TableHead><TableHead>Why</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {students.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-mono text-xs">{s.studentId}</TableCell>
+                  <TableCell>{s.name}</TableCell>
+                  <TableCell>{s.section ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.why}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      ) : null}
+
+      <Dialog open={!!form} onOpenChange={(o) => !o && setForm(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Support class for {students.length} students</DialogTitle>
+            <DialogDescription>
+              Pick the day. The first hour where the module&apos;s teacher and a suitable room are both free is taken, and everyone in the list is told.
+            </DialogDescription>
+          </DialogHeader>
+          {form && (
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1"><Label>Date</Label><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+                <div className="space-y-1"><Label>Length (minutes)</Label><Input type="number" min={30} max={180} step={30} value={form.minutes} onChange={(e) => setForm({ ...form, minutes: Number(e.target.value) })} /></div>
+              </div>
+              <div className="space-y-1">
+                <Label>What is it for?</Label>
+                <Textarea rows={3} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setForm(null)}>Cancel</Button>
+            <Button disabled={!form?.date || create.isPending} onClick={() => form && create.mutate(form)}>{create.isPending ? 'Booking…' : 'Book and notify'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }

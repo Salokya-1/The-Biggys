@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { idParam, parse } from '../lib/validation';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { actorOf, audit } from '../lib/audit';
+import { can } from '../lib/actions';
 import { allow, requireRole, STAFF } from '../plugins/auth';
 import { notifyUsers } from '../lib/notify';
 
@@ -35,7 +36,14 @@ export async function feeRoutes(app: FastifyInstance) {
       take: 500,
     });
     const summary = await prisma.feeInvoice.groupBy({ by: ['status'], _count: { _all: true }, _sum: { amount: true }, where: q.semesterId ? { semesterId: q.semesterId } : {} });
-    return { items, summary: summary.map((s) => ({ status: s.status, count: s._count._all, amount: Number(s._sum.amount ?? 0) })) };
+    // What RTE needs from this ledger is paid or unpaid, because that is what gates an admit card.
+    // The sums are finance's business, so they are withheld unless the account holds fees.amount.
+    const showAmounts = can(req.user!.role, 'fees.amount', req.permissions);
+    return {
+      showAmounts,
+      items: items.map((i) => ({ ...i, amount: showAmounts ? Number(i.amount) : null })),
+      summary: summary.map((s) => ({ status: s.status, count: s._count._all, amount: showAmounts ? Number(s._sum.amount ?? 0) : null })),
+    };
   });
 
   app.post('/fees/generate', { preHandler: [allow('fees.write')] }, async (req) => {
