@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ApiStatus } from '@/components/api-status';
 import { SheetStatusBadge, StandingBadge } from '@/components/status-badges';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import type { MarkSheetStatus, Standing } from '@/lib/types';
 
 interface Dashboard {
@@ -37,11 +38,11 @@ interface Dashboard {
 }
 
 const FUNNEL: MarkSheetStatus[] = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PUBLISHED', 'CORRECTION_REQUESTED'];
-const FUNNEL_COLOUR: Record<string, string> = { DRAFT: '#a1a1aa', SUBMITTED: '#38bdf8', UNDER_REVIEW: '#a78bfa', APPROVED: '#2dd4bf', PUBLISHED: '#34d399', CORRECTION_REQUESTED: '#fbbf24' };
+const FUNNEL_COLOUR: Record<string, string> = { DRAFT: '#bababa', SUBMITTED: '#2f6aaf', UNDER_REVIEW: '#41448b', APPROVED: '#e37e3f', PUBLISHED: '#3aa76d', CORRECTION_REQUESTED: '#f4d32a' };
 
 function Tile({ label, value, hint, warn }: { label: string; value: string | number; hint?: string; warn?: boolean }) {
   return (
-    <Card className={warn ? 'border-amber-300 dark:border-amber-800' : undefined}>
+    <Card className={cn("rounded-none", warn && "border-amber-300 dark:border-amber-800")}>
       <CardHeader className="pb-1">
         <CardDescription>{label}</CardDescription>
         <CardTitle className="text-3xl">{value}</CardTitle>
@@ -79,7 +80,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="rounded-none lg:col-span-2">
           <CardHeader className="pb-2"><CardTitle className="text-base">Result-processing funnel</CardTitle><CardDescription>Mark sheets by pipeline state. Click a state on the Mark sheets page to work the queue.</CardDescription></CardHeader>
           <CardContent className="h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -88,19 +89,19 @@ export default function DashboardPage() {
                 <XAxis dataKey="status" tick={{ fontSize: 11 }} interval={0} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip cursor={{ fill: 'transparent' }} />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="count" radius={[0, 0, 0, 0]}>
                   {funnelData.map((f) => <Cell key={f.key} fill={FUNNEL_COLOUR[f.key]} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Overdue</CardTitle><CardDescription>Waiting more than {d.funnel.overdueDays} days in a review state</CardDescription></CardHeader>
           <CardContent className="space-y-2 text-sm">
             {d.funnel.overdue.length === 0 && <p className="text-muted-foreground">Nothing overdue.</p>}
             {d.funnel.overdue.map((o) => (
-              <Link key={o.id} href={`/marksheets/${o.id}`} className="flex items-center justify-between rounded-md border p-2 hover:bg-muted">
+              <Link key={o.id} href={`/marksheets/${o.id}`} className="flex items-center justify-between rounded-none border p-2 hover:bg-muted">
                 <span><span className="font-medium">{o.module}</span> <span className="text-muted-foreground">{o.cohort}</span></span>
                 <span className="flex items-center gap-2"><SheetStatusBadge status={o.status} /><span className="text-xs text-muted-foreground">{Math.floor((new Date(d.generatedAt).getTime() - new Date(o.since).getTime()) / 86400e3)}d</span></span>
               </Link>
@@ -109,7 +110,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="rounded-none">
         <CardHeader className="pb-2"><CardTitle className="text-base">Publication status</CardTitle><CardDescription>Every open mark sheet, with missing marks and who holds it</CardDescription></CardHeader>
         <CardContent>
           <Table>
@@ -133,12 +134,12 @@ export default function DashboardPage() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Exam readiness</CardTitle><CardDescription>Upcoming sessions: seating generated and venue utilisation</CardDescription></CardHeader>
           <CardContent className="space-y-2 text-sm">
             {d.exams.length === 0 && <p className="text-muted-foreground">No upcoming sessions.</p>}
             {d.exams.map((e) => (
-              <Link key={e.id} href={`/exams/${e.id}`} className="block rounded-md border p-3 hover:bg-muted">
+              <Link key={e.id} href={`/exams/${e.id}`} className="block rounded-none border p-3 hover:bg-muted">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{e.title}</span>
                   {e.ready ? <Badge variant="outline" className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Seated</Badge> : <Badge variant="outline" className="border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Seating pending</Badge>}
@@ -149,7 +150,7 @@ export default function DashboardPage() {
             ))}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Faculty workload (current semesters)</CardTitle><CardDescription>Teaching load per lecturer — offerings, students and credits</CardDescription></CardHeader>
           <CardContent>
             <Table>
@@ -171,7 +172,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Pass rate by module</CardTitle><CardDescription>Latest published offering vs the previous cohort (first attempts)</CardDescription></CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -181,13 +182,13 @@ export default function DashboardPage() {
                 <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
                 <Tooltip cursor={{ fill: 'transparent' }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="previous" name="Previous" fill="#a1a1aa" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="latest" name="Latest" fill="#0ea5e9" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="previous" name="Previous" fill="#bababa" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="latest" name="Latest" fill="#41448b" radius={[0, 0, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Biggest movers</CardTitle><CardDescription>Pass-rate change against the previous offering</CardDescription></CardHeader>
           <CardContent>
             <Table>
@@ -210,7 +211,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">At-risk students</CardTitle><CardDescription>Under review (any fail or two outstanding resits) or with one outstanding resit</CardDescription></CardHeader>
           <CardContent>
             <Table>
@@ -229,7 +230,7 @@ export default function DashboardPage() {
             {d.academic.atRisk.count > d.academic.atRisk.students.length && <p className="mt-2 text-xs text-muted-foreground">Showing {d.academic.atRisk.students.length} of {d.academic.atRisk.count}. <Link href="/students?standing=REVIEW" className="underline">Open the directory</Link>.</p>}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-none">
           <CardHeader className="pb-2"><CardTitle className="text-base">Data quality</CardTitle><CardDescription>What the spreadsheets were hiding — surfaced, not silently fixed</CardDescription></CardHeader>
           <CardContent className="space-y-3 text-sm">
             {dqTotal === 0 && <p className="text-muted-foreground">No issues detected.</p>}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Armchair, BookOpen, Building2, CalendarDays, ClipboardCheck, GraduationCap, LayoutDashboard, LogOut, Users } from 'lucide-react';
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { NotificationsBell } from '@/components/notifications';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { ROLE_LABEL, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/lib/types';
@@ -42,10 +44,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (loading || !user) {
     return (
       <div className="flex min-h-screen">
-        <aside className="hidden w-60 border-r p-4 md:block">
-          <Skeleton className="mb-6 h-6 w-32" />
-          <Skeleton className="mb-2 h-8 w-full" />
-          <Skeleton className="mb-2 h-8 w-full" />
+        <aside className="hidden w-60 bg-sidebar p-4 md:block">
+          <Skeleton className="mb-6 h-8 w-36 bg-sidebar-accent" />
+          <Skeleton className="mb-2 h-8 w-full bg-sidebar-accent" />
+          <Skeleton className="mb-2 h-8 w-full bg-sidebar-accent" />
         </aside>
         <main className="flex-1 p-6">
           <Skeleton className="mb-4 h-8 w-64" />
@@ -58,24 +60,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const items = NAV.filter((n) => n.roles.includes(user.role));
 
   return (
-    <div className="flex min-h-screen bg-muted/30">
-      <aside className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex">
-        <div className="border-b px-5 py-4">
-          <Link href="/" className="block text-sm font-semibold tracking-tight">
-            RTE IMS
+    <div className="flex min-h-screen bg-background">
+      <aside className="hidden w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
+        <div className="border-b border-sidebar-border px-5 py-4">
+          <Link href="/" className="block">
+            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={150} height={35} priority className="h-9 w-auto" />
           </Link>
-          <p className="text-xs text-muted-foreground">Islington College</p>
+          <p className="mt-2 text-[11px] font-medium uppercase tracking-widest text-sidebar-foreground/70">RTE Management System</p>
         </div>
         <nav className="flex-1 space-y-1 p-3">
           {items.map((n) => {
-            const active = pathname === n.href || pathname.startsWith(n.href + '/');
+            const active = pathname === n.href || (n.href !== '/me' && pathname.startsWith(n.href + '/'));
             return (
               <Link
                 key={n.href}
                 href={n.href}
                 className={cn(
                   'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
-                  active ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted',
+                  active ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                 )}
               >
                 <n.icon className="h-4 w-4" />
@@ -84,14 +86,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="border-t p-4">
-          <div className="mb-2"><NotificationsBell isStudent={user.role === 'STUDENT'} /></div>
-          <p className="truncate text-sm font-medium">{user.name}</p>
-          <Badge variant="secondary" className="mt-1">{ROLE_LABEL[user.role]}</Badge>
+        <div className="border-t border-sidebar-border p-3">
+          <div className="mb-1 [&_button]:text-sidebar-foreground [&_button:hover]:bg-sidebar-accent [&_button:hover]:text-sidebar-accent-foreground">
+            <NotificationsBell isStudent={user.role === 'STUDENT'} />
+          </div>
+          <ThemeToggle inverse className="w-full justify-start" />
+          <div className="mt-3 px-2">
+            <p className="truncate text-sm font-medium">{user.name}</p>
+            <Badge variant="outline" className="mt-1 border-sidebar-border text-sidebar-foreground">{ROLE_LABEL[user.role]}</Badge>
+          </div>
           <Button
             variant="ghost"
             size="sm"
-            className="mt-3 w-full justify-start"
+            className="mt-2 w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             onClick={async () => {
               await logout();
               router.replace('/login');
@@ -103,15 +110,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b bg-background px-4 py-3 md:hidden">
-          <span className="text-sm font-semibold">RTE IMS</span>
-          <div className="flex gap-2">
+        <header className="flex items-center justify-between gap-3 bg-sidebar px-4 py-3 text-sidebar-foreground md:hidden">
+          <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={120} height={28} className="h-7 w-auto" />
+          <div className="flex flex-wrap items-center gap-3">
             {items.map((n) => (
-              <Link key={n.href} href={n.href} className="text-sm underline-offset-4 hover:underline">
+              <Link key={n.href} href={n.href} className="text-xs underline-offset-4 hover:underline">
                 {n.label}
               </Link>
             ))}
-            <button className="text-sm text-muted-foreground" onClick={() => logout().then(() => router.replace('/login'))}>
+            <ThemeToggle inverse className="h-7 px-1 [&_span]:hidden" />
+            <button className="text-xs opacity-80" onClick={() => logout().then(() => router.replace('/login'))}>
               Sign out
             </button>
           </div>

@@ -2,7 +2,9 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -43,8 +45,13 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-4">
+        <div className="flex items-center justify-between">
+          <Image src="/brand/islington-logo.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto dark:hidden" />
+          <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="hidden h-10 w-auto dark:block" />
+          <ThemeToggle />
+        </div>
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Sign in</CardTitle>

@@ -1,5 +1,8 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { ApiStatus } from '@/components/api-status';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { Button } from '@/components/ui/button';
 
 const pillars = [
   {
@@ -18,50 +21,49 @@ const pillars = [
 
 export default function Home() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-10 px-6 py-16">
-      <header className="flex flex-col gap-3">
-        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-          Islington Hackathon 2026 · Team The Biggys
-        </p>
-        <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-5xl">
-          RTE Integrated Management System
-        </h1>
-        <p className="max-w-2xl text-lg text-zinc-600 dark:text-zinc-400">
-          One source of truth for student records, result processing and examination seating — replacing
-          the RTE Department&apos;s isolated spreadsheets with a validated, approval-gated, auditable
-          workflow.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-3">
-          <Link
-            href="/login"
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
-            Staff sign in
-          </Link>
-          <a
-            href="https://github.com/Salokya-1/The-Biggys"
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            Source on GitHub
-          </a>
+    <div className="min-h-screen bg-background">
+      <header className="bg-sidebar text-sidebar-foreground">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+          <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto" />
+          <div className="flex items-center gap-2">
+            <ThemeToggle inverse />
+            <Button size="sm" className="bg-brand-orange text-white hover:bg-brand-orange/90" render={<Link href="/login" />}>
+              Staff sign in
+            </Button>
+          </div>
         </div>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-3">
-        {pillars.map((p) => (
-          <article
-            key={p.title}
-            className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
-          >
-            <h2 className="mb-2 font-semibold text-zinc-900 dark:text-zinc-100">{p.title}</h2>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">{p.body}</p>
-          </article>
-        ))}
-      </section>
+      <main className="mx-auto flex max-w-5xl flex-col gap-10 px-6 py-14">
+        <section className="flex flex-col gap-3">
+          <p className="text-xs font-semibold uppercase tracking-widest text-brand-blue">Islington Hackathon 2026 · Team The Biggys</p>
+          <h1 className="text-4xl font-bold uppercase tracking-tight text-primary sm:text-5xl">RTE Integrated Management System</h1>
+          <p className="max-w-2xl text-lg text-muted-foreground">
+            One source of truth for student records, result processing and examination seating — replacing the RTE Department&apos;s isolated
+            spreadsheets with a validated, approval-gated, auditable workflow.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-3">
+            <Button render={<Link href="/login" />}>Open the system</Button>
+            <Button variant="outline" render={<a href="https://github.com/Salokya-1/The-Biggys" />}>Source on GitHub</Button>
+          </div>
+        </section>
 
-      <section className="max-w-md">
-        <ApiStatus />
-      </section>
-    </main>
+        <section className="grid gap-4 sm:grid-cols-3">
+          {pillars.map((p) => (
+            <article key={p.title} className="border-t-4 border-primary bg-card p-5 shadow-sm">
+              <h2 className="mb-2 font-semibold uppercase tracking-wide text-primary">{p.title}</h2>
+              <p className="text-sm text-muted-foreground">{p.body}</p>
+            </article>
+          ))}
+        </section>
+
+        <section className="max-w-md">
+          <ApiStatus />
+        </section>
+      </main>
+      <footer className="border-t py-6 text-center text-xs text-muted-foreground">
+        Prototype for Islington College&apos;s RTE Department · London Metropolitan University programmes · seeded, fictional data
+      </footer>
+    </div>
   );
 }
