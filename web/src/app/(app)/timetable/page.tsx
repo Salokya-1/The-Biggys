@@ -67,6 +67,7 @@ interface PeriodGrid {
   finalYear: boolean;
   dayEndsBy: string;
   maxGapHours: number;
+  maxDailyHours?: number;
   sessions?: { kind: string; minutes: number; rooms: string[] }[];
   periods: { startTime: string; endTime: string }[];
 }
@@ -74,7 +75,9 @@ interface Health {
   finalYear: boolean;
   dayEndsBy: string;
   maxGapHours: number;
+  maxDailyHours: number;
   gaps: { section: string; dayOfWeek: number; after: string; before: string; gapMinutes: number }[];
+  heavyDays: { section: string; dayOfWeek: number; hours: number; allowedMinutes: number }[];
   lateFinalYear: { slotId: string; section: string; module: string; endTime: string }[];
   clashes: number;
   slots: number;
@@ -300,16 +303,17 @@ export default function TimetablePage() {
       {grid.data && (
         <p className="text-xs text-muted-foreground">
           {grid.data.finalYear ? `Final-year group: classes finish by ${grid.data.dayEndsBy} so students are free for work and placements.` : `Classes start on the half hour from 06:30 and finish by ${grid.data.dayEndsBy}.`}{' '}
-          Lectures run 90 minutes for the whole cohort in a hall, tutorials an hour per group, workshops two hours in a lab. No group may have a gap longer than {grid.data.maxGapHours} hours.
+          Lectures run 90 minutes for the whole cohort in a hall, tutorials an hour per group, workshops two hours in a lab. No group may have a gap longer than {grid.data.maxGapHours} hours, or more than {grid.data.maxDailyHours ?? 5} hours of class in a day.
         </p>
       )}
-      {health.data && (health.data.gaps.length > 0 || health.data.lateFinalYear.length > 0) && (
+      {health.data && (health.data.gaps.length > 0 || health.data.lateFinalYear.length > 0 || (health.data.heavyDays ?? []).length > 0) && (
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Routine warnings</AlertTitle>
           <AlertDescription>
             <ul className="mt-1 list-disc pl-4 text-xs">
               {health.data.gaps.slice(0, 4).map((g, i) => <li key={i}>Section {g.section}, {DAYS[g.dayOfWeek - 1]}: {Math.round((g.gapMinutes / 60) * 10) / 10} h with nothing between {g.after} and {g.before}</li>)}
+              {(health.data.heavyDays ?? []).slice(0, 4).map((d, i) => <li key={`load-${i}`}>Section {d.section}, {DAYS[d.dayOfWeek - 1]}: {d.hours} h of class, more than the {health.data.maxDailyHours} h a day allowed</li>)}
               {health.data.lateFinalYear.slice(0, 4).map((l) => <li key={l.slotId}>Section {l.section} {l.module} finishes at {l.endTime}, after the 10:00 final-year cut-off</li>)}
             </ul>
           </AlertDescription>

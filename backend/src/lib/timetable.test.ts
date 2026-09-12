@@ -7,8 +7,12 @@ import {
   daysFor,
   sessionsFor,
   yearOfSemester,
+  DEFAULT_MAX_DAILY_MIN,
   allowedGap,
+  breaksDailyCap,
   breaksGapRule,
+  dayLoad,
+  findDayLoadViolations,
   findClashes,
   findGapViolations,
   generateTimetable,
@@ -232,5 +236,52 @@ describe('class kinds and the year day pattern', () => {
     expect([...perTeacher.keys()].sort()).toEqual(['ta', 'tb']);
     // two sections each, and a teacher keeps the same sections for every kind
     expect([...perTeacher.values()].map((v) => v.size)).toEqual([2, 2]);
+  });
+});
+
+describe('the daily teaching cap', () => {
+  it('counts what a group already has that day', () => {
+    const day = [
+      { dayOfWeek: 1, startTime: '08:00', endTime: '09:30' },
+      { dayOfWeek: 1, startTime: '10:00', endTime: '12:00' },
+      { dayOfWeek: 2, startTime: '08:00', endTime: '10:00' },
+    ];
+    expect(dayLoad(day, 1)).toBe(210);
+    expect(dayLoad(day, 2)).toBe(120);
+    expect(dayLoad(day, 3)).toBe(0);
+  });
+
+  it('refuses a class that would push the day past five hours', () => {
+    const day = [
+      { dayOfWeek: 1, startTime: '08:00', endTime: '10:00' },
+      { dayOfWeek: 1, startTime: '10:30', endTime: '12:30' },
+    ]; // four hours so far
+    expect(breaksDailyCap(day, { dayOfWeek: 1, startTime: '13:00', endTime: '14:00' })).toBe(false); // exactly five
+    expect(breaksDailyCap(day, { dayOfWeek: 1, startTime: '13:00', endTime: '14:30' })).toBe(true); // five and a half
+    expect(breaksDailyCap(day, { dayOfWeek: 2, startTime: '13:00', endTime: '17:00' })).toBe(false); // another day
+    expect(DEFAULT_MAX_DAILY_MIN).toBe(300);
+  });
+
+  it('lists the days that carry too much', () => {
+    const v = findDayLoadViolations([
+      { sectionId: 'A', dayOfWeek: 1, startTime: '07:00', endTime: '13:00' },
+      { sectionId: 'A', dayOfWeek: 2, startTime: '08:00', endTime: '10:00' },
+    ]);
+    expect(v).toEqual([{ sectionId: 'A', dayOfWeek: 1, minutes: 360, allowedMinutes: 300 }]);
+  });
+
+  it('never gives a group more than the cap, even under pressure', () => {
+    const r = generateTimetable(
+      [{ id: 's1', name: 'A', size: 20, year: 1 }],
+      Array.from({ length: 6 }, (_, i) => ({ id: `o${i}`, code: `M${i}`, teacherId: `t${i}`, credits: 30 })),
+      campus(12),
+    );
+    expect(r.dayLoadViolations).toEqual([]);
+    const perDay = new Map<number, number>();
+    for (const s of r.slots) {
+      const mins = toMinutes(s.endTime) - toMinutes(s.startTime);
+      perDay.set(s.dayOfWeek, (perDay.get(s.dayOfWeek) ?? 0) + mins);
+    }
+    for (const [, mins] of perDay) expect(mins).toBeLessThanOrEqual(DEFAULT_MAX_DAILY_MIN);
   });
 });

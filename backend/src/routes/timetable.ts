@@ -6,7 +6,7 @@ import { idParam, parse } from '../lib/validation';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { actorOf, audit } from '../lib/audit';
 import { allow, requireRole, STAFF } from '../plugins/auth';
-import { DAY_FIRST_START, DAY_LAST_END, DEFAULT_MAX_GAP_MIN, EARLY_PERIODS, SESSION, STANDARD_PERIODS, findClashes, fromMinutes, startTimes, findGapViolations, generateTimetable, isFinalYearSemester, periodsForSemester, slotDate, suggestSlots, toMinutes } from '../lib/timetable';
+import { DAY_FIRST_START, DAY_LAST_END, DEFAULT_MAX_DAILY_MIN, DEFAULT_MAX_GAP_MIN, dayLoad, findDayLoadViolations, EARLY_PERIODS, SESSION, STANDARD_PERIODS, findClashes, fromMinutes, startTimes, findGapViolations, generateTimetable, isFinalYearSemester, periodsForSemester, slotDate, suggestSlots, toMinutes } from '../lib/timetable';
 import { buildDay, dayIso, parseDay, slotInclude, teacherConflicts, venueConflicts } from '../services/calendar';
 import { notifyUsers } from '../lib/notify';
 
@@ -94,6 +94,7 @@ export async function timetableRoutes(app: FastifyInstance) {
         periods: periodsForSemester(semester.number),
         latestEnd: finalYear ? '10:00' : undefined,
         maxGapMinutes: DEFAULT_MAX_GAP_MIN,
+        maxDailyMinutes: DEFAULT_MAX_DAILY_MIN,
       })),
       semester.offerings.map((o) => ({ id: o.id, code: o.module.code, teacherId: o.lecturerId!, teacherIds: [o.lecturerId, o.coLecturerId].filter((x): x is string => Boolean(x)), credits: o.module.credits, sessionsPerWeek })),
       rooms.map((r) => ({ id: r.id, name: r.name, capacity: r.rows * r.cols, roomType: r.roomType })),
@@ -113,7 +114,7 @@ export async function timetableRoutes(app: FastifyInstance) {
         const chunk = pairs.slice(i, i + 500);
         await tx.$executeRawUnsafe(`INSERT INTO "_SlotGroups" ("A","B") VALUES ${chunk.map((_, j) => `($${j * 2 + 1},$${j * 2 + 2})`).join(',')} ON CONFLICT DO NOTHING`, ...chunk.flatMap((p) => [p.A, p.B]));
       }
-      await audit(tx, { ...actorOf(req), action: 'timetable.generate', entityType: 'Semester', entityId: semesterId, after: { slots: result.slots.length, unplaced: result.unplaced.length, gapViolations: result.gapViolations.length, sessionsPerWeek, finalYear } });
+      await audit(tx, { ...actorOf(req), action: 'timetable.generate', entityType: 'Semester', entityId: semesterId, after: { slots: result.slots.length, unplaced: result.unplaced.length, gapViolations: result.gapViolations.length, dayLoadViolations: result.dayLoadViolations.length, sessionsPerWeek, finalYear } });
     });
     return {
       slots: result.slots.length,
@@ -124,6 +125,8 @@ export async function timetableRoutes(app: FastifyInstance) {
       maxGapHours: DEFAULT_MAX_GAP_MIN / 60,
       unplaced: result.unplaced.map((u) => ({ ...u, section: sectionName.get(u.sectionId), module: moduleCode.get(u.offeringId) })),
       gapViolations: result.gapViolations.map((g) => ({ ...g, section: sectionName.get(g.sectionId) })),
+      dayLoadViolations: result.dayLoadViolations.map((d) => ({ ...d, section: sectionName.get(d.sectionId) })),
+      maxDailyHours: DEFAULT_MAX_DAILY_MIN / 60,
     };
   });
 
@@ -194,6 +197,16 @@ export async function timetableRoutes(app: FastifyInstance) {
       where: { sectionId: data.sectionId, dayOfWeek: data.dayOfWeek, NOT: excludeId ? { id: excludeId } : undefined },
       select: { sectionId: true, dayOfWeek: true, startTime: true, endTime: true },
     });
+    // A day that already carries its five hours cannot take another class, however it is moved.
+    const load = dayLoad(sameDay.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), data.dayOfWeek);
+    const adding = toMinutes(data.endTime) - toMinutes(data.startTime);
+    if (load + adding > DEFAULT_MAX_DAILY_MIN) {
+      const alternatives = await alternativesFor({ id: excludeId, ...data });
+      throw conflict(`That day already has ${Math.round((load / 60) * 10) / 10} hours of class for this group; ${DEFAULT_MAX_DAILY_MIN / 60} is the most it may carry`, {
+        clashes: [`${Math.round((load / 60) * 10) / 10} h already timetabled, adding ${Math.round((adding / 60) * 10) / 10} h`],
+        alternatives,
+      });
+    }
     const gaps = findGapViolations([...sameDay, { sectionId: data.sectionId, dayOfWeek: data.dayOfWeek, startTime: data.startTime, endTime: data.endTime }]);
     if (gaps.length) {
       const alternatives = await alternativesFor({ id: excludeId, ...data });
@@ -460,11 +473,12 @@ export async function timetableRoutes(app: FastifyInstance) {
     const names = new Map(slots.map((s) => [s.sectionId, s.section.name]));
     const finalYear = isFinalYearSemester(semester.number);
     const gaps = findGapViolations(slots).map((g) => ({ ...g, section: names.get(g.sectionId) ?? g.sectionId }));
+    const heavyDays = findDayLoadViolations(slots).map((d) => ({ ...d, section: names.get(d.sectionId) ?? d.sectionId, hours: Math.round((d.minutes / 60) * 10) / 10 }));
     const lateFinalYear = finalYear
       ? slots.filter((s) => toMinutes(s.endTime) > toMinutes('10:00')).map((s) => ({ slotId: s.id, section: s.section.name, module: s.moduleOffering.module.code, dayOfWeek: s.dayOfWeek, endTime: s.endTime }))
       : [];
     const clashes = findClashes(slots.map((s) => ({ id: s.id, sectionId: s.sectionId, teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })));
-    return { finalYear, dayEndsBy: finalYear ? '10:00' : '17:15', maxGapHours: DEFAULT_MAX_GAP_MIN / 60, gaps, lateFinalYear, clashes: clashes.length, slots: slots.length };
+    return { finalYear, dayEndsBy: finalYear ? '10:00' : '17:15', maxGapHours: DEFAULT_MAX_GAP_MIN / 60, maxDailyHours: DEFAULT_MAX_DAILY_MIN / 60, gaps, heavyDays, lateFinalYear, clashes: clashes.length, slots: slots.length };
   });
 
   /** The period grid a semester uses, so the calendar can draw drop targets. */
@@ -486,6 +500,7 @@ export async function timetableRoutes(app: FastifyInstance) {
       finalYear,
       dayEndsBy,
       maxGapHours: DEFAULT_MAX_GAP_MIN / 60,
+      maxDailyHours: DEFAULT_MAX_DAILY_MIN / 60,
       sessions: Object.entries(SESSION).map(([kind, s]) => ({ kind, minutes: s.minutes, rooms: s.rooms })),
       // `endTime` is the default for a class starting here; a class keeps whatever length it has.
       periods: starts.map((startTime) => ({ startTime, endTime: fromMinutes(Math.min(toMinutes(startTime) + 60, toMinutes(dayEndsBy))) })),

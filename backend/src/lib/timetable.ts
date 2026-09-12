@@ -77,6 +77,8 @@ export interface SectionConstraints {
   latestEnd?: string;
   /** Longest allowed gap between two classes on the same day, in minutes. */
   maxGapMinutes?: number;
+  /** Most teaching a group may be given in one day, in minutes. */
+  maxDailyMinutes?: number;
 }
 
 export interface TtSection extends SectionConstraints {
@@ -126,6 +128,7 @@ export interface TtResult {
   slots: TtSlot[];
   unplaced: { sectionId: string; offeringId: string; kind: ClassKind; missing: number; reason: string }[];
   gapViolations: GapViolation[];
+  dayLoadViolations: DayLoadViolation[];
 }
 
 const grid = (times: [string, string][]): Period[] =>
@@ -171,6 +174,8 @@ export const EARLY_PERIODS: Period[] = grid([
 
 export const DEFAULT_PERIODS = STANDARD_PERIODS;
 export const DEFAULT_MAX_GAP_MIN = 120;
+/** Nobody teaches or sits through more than five hours of class in one day. */
+export const DEFAULT_MAX_DAILY_MIN = 300;
 /** Semesters 5 and 6 are the final year at Islington's three-year degrees. */
 export const isFinalYearSemester = (semesterNumber: number) => semesterNumber >= 5;
 export const periodsForSemester = (semesterNumber: number) => (isFinalYearSemester(semesterNumber) ? EARLY_PERIODS : STANDARD_PERIODS);
@@ -228,6 +233,41 @@ export function breaksGapRule(dayIntervals: Interval[], p: Interval, maxGap = DE
     if (gap > allowedGap(lengthOf(day[i - 1]), lengthOf(day[i]), maxGap)) return true;
   }
   return false;
+}
+
+/** Minutes of class a group already has on that day. */
+export function dayLoad(dayIntervals: Interval[], dayOfWeek: number): number {
+  return dayIntervals.filter((i) => i.dayOfWeek === dayOfWeek).reduce((n, i) => n + (toMinutes(i.endTime) - toMinutes(i.startTime)), 0);
+}
+
+/** Would adding `p` give the group more class in one day than it should have? */
+export function breaksDailyCap(dayIntervals: Interval[], p: Interval, maxDaily = DEFAULT_MAX_DAILY_MIN): boolean {
+  return dayLoad(dayIntervals, p.dayOfWeek) + (toMinutes(p.endTime) - toMinutes(p.startTime)) > maxDaily;
+}
+
+export interface DayLoadViolation {
+  sectionId: string;
+  dayOfWeek: number;
+  minutes: number;
+  allowedMinutes: number;
+}
+
+/** Days where a group is given more teaching than the cap allows. */
+export function findDayLoadViolations<T extends { sectionId: string; dayOfWeek: number; startTime: string; endTime: string }>(
+  slots: T[],
+  maxDaily = DEFAULT_MAX_DAILY_MIN,
+): DayLoadViolation[] {
+  const byKey = new Map<string, number>();
+  for (const s of slots) {
+    const k = `${s.sectionId}:${s.dayOfWeek}`;
+    byKey.set(k, (byKey.get(k) ?? 0) + (toMinutes(s.endTime) - toMinutes(s.startTime)));
+  }
+  return [...byKey]
+    .filter(([, minutes]) => minutes > maxDaily)
+    .map(([k, minutes]) => {
+      const [sectionId, day] = k.split(':');
+      return { sectionId, dayOfWeek: Number(day), minutes, allowedMinutes: maxDaily };
+    });
 }
 
 export interface GapViolation {
@@ -328,6 +368,7 @@ export function generateTimetable(
     const candidateRooms = roomsFor(kind, size);
     if (!candidateRooms.length) return { ok: false, reason: `no ${SESSION[kind].rooms[0].toLowerCase().replace('_', ' ')} big enough for ${size} students` };
     const maxGap = groups[0]?.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN;
+    const maxDaily = groups[0]?.maxDailyMinutes ?? DEFAULT_MAX_DAILY_MIN;
     let reason = 'no free period with a room, teacher and groups all available';
 
     // pass 1: this kind's own days, compact; pass 2: same days, allow a longer gap;
@@ -342,6 +383,11 @@ export function generateTimetable(
         if (teacherBusy.busy(teacherId, p)) continue;
         if (teacherOff.busy(teacherId, p)) {
           reason = 'the teacher is not available at the times that were free';
+          continue;
+        }
+        // The daily cap is never relaxed, in any pass: a nine-hour day is not a timetable.
+        if (groups.some((g) => breaksDailyCap(sectionBusy.get(g.id), p, maxDaily))) {
+          reason = `every free period was on a day that already has ${maxDaily / 60} hours of class`;
           continue;
         }
         if (respectGap && groups.some((g) => breaksGapRule(sectionBusy.get(g.id), p, maxGap))) {
@@ -391,8 +437,11 @@ export function generateTimetable(
 
   const ordered = slots.sort((a, b) => a.dayOfWeek - b.dayOfWeek || toMinutes(a.startTime) - toMinutes(b.startTime) || a.sectionId.localeCompare(b.sectionId));
   const gapMap = new Map(sections.map((s) => [s.id, s.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN]));
-  const gapViolations = findGapViolations(ordered.flatMap((s) => s.groupIds.map((g) => ({ ...s, sectionId: g })))).filter((v) => v.gapMinutes > (gapMap.get(v.sectionId) ?? DEFAULT_MAX_GAP_MIN));
-  return { slots: ordered, unplaced, gapViolations };
+  const perGroup = ordered.flatMap((s) => s.groupIds.map((g) => ({ ...s, sectionId: g })));
+  const gapViolations = findGapViolations(perGroup).filter((v) => v.gapMinutes > (gapMap.get(v.sectionId) ?? DEFAULT_MAX_GAP_MIN));
+  const capMap = new Map(sections.map((s) => [s.id, s.maxDailyMinutes ?? DEFAULT_MAX_DAILY_MIN]));
+  const dayLoadViolations = findDayLoadViolations(perGroup).filter((v) => v.minutes > (capMap.get(v.sectionId) ?? DEFAULT_MAX_DAILY_MIN));
+  return { slots: ordered, unplaced, gapViolations, dayLoadViolations };
 }
 
 /** Close gaps left by the fallback passes by moving the class after the hole earlier. */
