@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
+import ExcelJS from 'exceljs';
 import { prisma } from '../lib/prisma';
 import { idParam, paged, pagination, parse } from '../lib/validation';
 import { badRequest, forbidden, notFound } from '../lib/errors';
@@ -296,6 +297,136 @@ export async function studentRoutes(app: FastifyInstance) {
     });
     reply.code(201);
     return student;
+  });
+
+  /**
+   * Everything on one student, as a workbook.
+   *
+   * A profile screen answers "how is this person doing"; a spreadsheet answers the questions
+   * nobody anticipated — a scholarship panel sorting by credits, a visa letter needing every
+   * module and grade, an appeal that turns on one component. Four sheets rather than one, because
+   * a single flat export makes each of those a filtering exercise.
+   */
+  app.get('/students/:id/export.xlsx', { preHandler: [requireRole(...STAFF, 'STUDENT')] }, async (req, reply) => {
+    const { id } = parse(idParam, req.params);
+    const u = req.user!;
+    if (u.role === 'STUDENT' && u.studentId !== id) throw forbidden('Students can only export their own record');
+    const p = await loadProfile(id, u);
+    const s = p.student;
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'KramIQ · RTE Management System';
+    wb.created = new Date();
+
+    const info = wb.addWorksheet('Student');
+    info.columns = [{ width: 26 }, { width: 56 }];
+    const pair = (k: string, v: string | number | null | undefined) => {
+      const row = info.addRow([k, v ?? '—']);
+      row.getCell(1).font = { bold: true };
+    };
+    pair('Name', s.name);
+    pair('Student ID', s.studentId);
+    pair('Email', s.email ?? s.login?.email ?? null);
+    pair('Programme', `${s.programme.code} — ${s.programme.name}`);
+    pair('Level', s.programme.level);
+    pair('Intake', s.intake.label);
+    pair('Current semester', s.currentSemester ? `Semester ${s.currentSemester.number}` : 'Not in a semester');
+    pair('Status', s.status);
+    pair('Standing', s.standing);
+    pair('Modules taken', p.stats.modulesTaken);
+    pair('Passed', p.stats.passed);
+    pair('Failed', p.stats.failed);
+    pair('Resits', p.stats.resits);
+    pair('Awaiting publication', p.stats.pending);
+    pair('Exported', new Date().toISOString());
+
+    const res = wb.addWorksheet('Results');
+    res.columns = [
+      { header: 'Semester', key: 'sem', width: 10 },
+      { header: 'Module code', key: 'code', width: 14 },
+      { header: 'Module', key: 'title', width: 44 },
+      { header: 'Credits', key: 'credits', width: 9 },
+      { header: 'Attempt', key: 'attempt', width: 9 },
+      { header: 'Resit', key: 'resit', width: 7 },
+      { header: 'Lecturer', key: 'lecturer', width: 26 },
+      { header: 'Mark', key: 'mark', width: 8 },
+      { header: 'Grade', key: 'grade', width: 8 },
+      { header: 'Outcome', key: 'outcome', width: 14 },
+    ];
+    for (const sem of p.semesters) {
+      for (const m of sem.modules) {
+        res.addRow({
+          sem: sem.number,
+          code: m.module.code,
+          title: m.module.title,
+          credits: m.module.credits,
+          attempt: m.attempt,
+          resit: m.isResit ? 'Yes' : '',
+          lecturer: m.lecturer ?? '—',
+          mark: m.result ? m.result.overallMark : null,
+          grade: m.result?.grade ?? '',
+          outcome: m.result ? m.result.outcome : 'Awaiting publication',
+        });
+      }
+    }
+    res.getRow(1).font = { bold: true };
+
+    const comp = wb.addWorksheet('Components');
+    comp.columns = [
+      { header: 'Module code', key: 'code', width: 14 },
+      { header: 'Component', key: 'name', width: 30 },
+      { header: 'Weight %', key: 'weight', width: 10 },
+      { header: 'Out of', key: 'max', width: 9 },
+      { header: 'Mark', key: 'mark', width: 8 },
+      { header: 'Absent', key: 'absent', width: 8 },
+    ];
+    const marks = await prisma.mark.findMany({
+      where: { enrollment: { studentId: id }, markSheet: { status: 'PUBLISHED' } },
+      select: {
+        rawMark: true,
+        isAbsent: true,
+        component: { select: { name: true, weight: true, maxMark: true } },
+        enrollment: { select: { moduleOffering: { select: { module: { select: { code: true } } } } } },
+      },
+    });
+    for (const m of marks) {
+      comp.addRow({
+        code: m.enrollment.moduleOffering.module.code,
+        name: m.component.name,
+        weight: m.component.weight,
+        max: m.component.maxMark,
+        mark: m.rawMark === null ? null : Number(m.rawMark),
+        absent: m.isAbsent ? 'Yes' : '',
+      });
+    }
+    comp.getRow(1).font = { bold: true };
+
+    const att = wb.addWorksheet('Attendance');
+    att.columns = [
+      { header: 'Module code', key: 'code', width: 14 },
+      { header: 'Classes held', key: 'held', width: 13 },
+      { header: 'Attended', key: 'attended', width: 11 },
+      { header: 'Rate %', key: 'rate', width: 9 },
+    ];
+    const attendance = await prisma.attendanceRecord.findMany({
+      where: { studentId: id },
+      select: { status: true, offering: { select: { module: { select: { code: true } } } } },
+    });
+    const byModule = new Map<string, { held: number; attended: number }>();
+    for (const a of attendance) {
+      const code = a.offering.module.code;
+      const cur = byModule.get(code) ?? { held: 0, attended: 0 };
+      cur.held += 1;
+      if (a.status !== 'ABSENT') cur.attended += 1;
+      byModule.set(code, cur);
+    }
+    for (const [code, v] of byModule) att.addRow({ code, held: v.held, attended: v.attended, rate: Math.round((v.attended / v.held) * 100) });
+    att.getRow(1).font = { bold: true };
+
+    const buf = await wb.xlsx.writeBuffer();
+    reply.header('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    reply.header('content-disposition', `attachment; filename="${s.studentId}-academic-record.xlsx"`);
+    return Buffer.from(buf);
   });
 
   app.patch('/students/:id', { preHandler: [allow('student.write')] }, async (req) => {

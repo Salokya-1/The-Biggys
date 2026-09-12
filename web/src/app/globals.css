@@ -167,3 +167,40 @@
 
 /* Nothing may push the page sideways. A wide table or diagram scrolls inside its own box. */
 html, body { overflow-x: hidden; }
+
+/* Printing.
+   A report printed straight from the screen carries the sidebar, the header and every button with
+   it, and the first page is half navigation. On paper only the content matters: the chrome is
+   removed, the layout stops being a fixed-height scrolling shell, and anything inside a scroll box
+   is allowed its full height so a table is not guillotined at the edge of its viewport. */
+@media print {
+  :root { color-scheme: light; }
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  [data-print-hide], nav[data-app-nav], aside[data-app-rail], header[data-app-header] { display: none !important; }
+  [data-app-shell] { display: block !important; height: auto !important; overflow: visible !important; }
+  main {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  /* Scroll boxes print in full rather than showing the sliver that happened to be visible. */
+  main * {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  /* Keep a card, a table row or a chart from being split down the middle by a page break. */
+  table, figure, .print-keep { break-inside: avoid; }
+  thead { display: table-header-group; }
+  tr, img, svg { break-inside: avoid; }
+  a[href]::after { content: none !important; }
+  .print-only { display: revert !important; }
+}
+
+/* Shown on paper, never on screen. */
+.print-only { display: none; }

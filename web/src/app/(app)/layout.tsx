@@ -78,8 +78,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     // The rail is fixed: only the content column scrolls, so navigation stays put on a long page.
-    <div className="flex h-dvh overflow-hidden bg-background">
-      <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
+    <div data-app-shell className="flex h-dvh overflow-hidden bg-background">
+      <aside data-app-rail className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
         <div className="border-b border-sidebar-border px-5 py-5">
           <Link href="/" className="flex items-center gap-3">
             <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={210} height={49} priority className="h-12 w-auto shrink-0" />
@@ -130,7 +130,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 bg-sidebar px-4 py-2 text-sidebar-foreground md:hidden">
+        <header data-app-header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 bg-sidebar px-4 py-2 text-sidebar-foreground md:hidden">
           <span className="flex items-center gap-2">
             <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={160} height={37} className="h-9 w-auto" />
             <Image src="/brand/kramiq-square.png" alt="KramIQ" width={72} height={72} className="h-8 w-8" />

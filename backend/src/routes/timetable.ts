@@ -9,6 +9,7 @@ import { allow, requireRole, STAFF } from '../plugins/auth';
 import { DAY_FIRST_START, DAY_LAST_END, DEFAULT_MAX_DAILY_MIN, DEFAULT_MAX_GAP_MIN, dayLoad, findDayLoadViolations, EARLY_PERIODS, SESSION, STANDARD_PERIODS, findClashes, fromMinutes, startTimes, findGapViolations, generateTimetable, isFinalYearSemester, periodsForSemester, slotDate, suggestSlots, toMinutes } from '../lib/timetable';
 import { buildDay, dayIso, parseDay, slotInclude, teacherConflicts, venueConflicts } from '../services/calendar';
 import { notifyUsers } from '../lib/notify';
+import { describeChange, notifyClassChange } from '../lib/class-change';
 
 const time = z.string().regex(/^\d{2}:\d{2}$/);
 const slotBody = z.object({
@@ -233,11 +234,23 @@ export async function timetableRoutes(app: FastifyInstance) {
     if (!before) throw notFound('Slot not found');
     const merged = { ...before, ...body, venueId: body.venueId === undefined ? before.venueId : body.venueId };
     await assertNoClash({ semesterId: merged.semesterId, sectionId: merged.sectionId, teacherId: merged.teacherId, venueId: merged.venueId, dayOfWeek: merged.dayOfWeek, startTime: merged.startTime, endTime: merged.endTime }, id);
-    const after = await prisma.timetableSlot.update({ where: { id }, data: { ...body, venueId: body.venueId === undefined ? undefined : body.venueId }, include: slotInclude });
+    const beforeFull = await prisma.timetableSlot.findUnique({ where: { id }, include: slotInclude });
+    const after = await prisma.timetableSlot.update({ where: { id }, data: { ...body, venueId: body.venueId === undefined ? undefined : body.venueId }, include: { ...slotInclude, groups: { select: { id: true } } } });
     await audit(prisma, { ...actorOf(req), action: 'timetable.slot.update', entityType: 'TimetableSlot', entityId: id, before, after: body });
-    if (body.teacherId && body.teacherId !== before.teacherId) {
-      await notifyUsers(prisma, [body.teacherId, before.teacherId], { type: 'timetable.teacher_changed', title: `Teaching change: ${after.moduleOffering.module.code} section ${after.section.name}`, body: `${after.teacher.name} now teaches this class (${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][after.dayOfWeek - 1]} ${after.startTime}).`, payload: { slotId: id } });
-    }
+
+    // Whoever is sitting in that room is told what moved and what it moved to, not merely that
+    // something changed — a notice that sends them back to the timetable has done half a job.
+    const changes = describeChange(
+      { dayOfWeek: beforeFull!.dayOfWeek, startTime: beforeFull!.startTime, endTime: beforeFull!.endTime, teacherName: beforeFull!.teacher.name, venueName: beforeFull!.venue?.name ?? null },
+      { dayOfWeek: after.dayOfWeek, startTime: after.startTime, endTime: after.endTime, teacherName: after.teacher.name, venueName: after.venue?.name ?? null },
+    );
+    await notifyClassChange({
+      slotId: id,
+      moduleCode: after.moduleOffering.module.code,
+      sectionIds: [...new Set([after.sectionId, ...after.groups.map((g) => g.id)])],
+      changes,
+      staffIds: [after.teacherId, before.teacherId],
+    });
     return after;
   });
 
@@ -381,11 +394,43 @@ export async function timetableRoutes(app: FastifyInstance) {
       update: { kind: body.kind, teacherId: body.teacherId ?? null, venueId: body.venueId ?? null, startTime: body.startTime ?? null, endTime: body.endTime ?? null, reason: body.reason, createdById: req.user!.id },
     });
     await audit(prisma, { ...actorOf(req), action: 'timetable.exception', entityType: 'TimetableSlot', entityId: id, after: { ...body }, reason: body.reason });
-    // tell the section's students and the teachers involved
-    const students = await prisma.user.findMany({ where: { student: { sectionId: slot.sectionId, deletedAt: null } }, select: { id: true } });
-    const label = `${slot.moduleOffering.module.code} on ${body.date} ${start}`;
-    const text = body.kind === 'CANCELLED' ? `Class cancelled: ${label}. ${body.reason}` : body.kind === 'TEACHER_CHANGE' ? `Cover teacher for ${label}.` : body.kind === 'ROOM_CHANGE' ? `Room change for ${label}.` : `${label} moved to ${start}–${end}.`;
-    await notifyUsers(prisma, [...students.map((s) => s.id), slot.teacherId, ...(body.teacherId ? [body.teacherId] : [])], { type: 'timetable.exception', title: `Timetable change · section ${slot.section.name}`, body: text, payload: { slotId: id, date: body.date } });
+    // Everybody in the room for that one date, told exactly what is different about it.
+    const groups = await prisma.timetableSlot.findUnique({ where: { id }, select: { groups: { select: { id: true } } } });
+    const sectionIds = [...new Set([slot.sectionId, ...(groups?.groups ?? []).map((g) => g.id)])];
+
+    if (body.kind === 'CANCELLED') {
+      const students = await prisma.student.findMany({ where: { sectionId: { in: sectionIds }, deletedAt: null, userId: { not: null } }, select: { userId: true } });
+      await notifyUsers(prisma, [...students.map((s) => s.userId!), slot.teacherId], {
+        type: 'class.cancelled',
+        title: `${slot.moduleOffering.module.code}: class cancelled`,
+        body: `Your ${start}–${end} class on ${body.date} will not run. ${body.reason}`,
+        payload: { slotId: id, date: body.date },
+      });
+    } else {
+      const [newTeacher, newVenue] = await Promise.all([
+        body.teacherId ? prisma.user.findUnique({ where: { id: body.teacherId }, select: { name: true } }) : null,
+        body.venueId ? prisma.venue.findUnique({ where: { id: body.venueId }, select: { name: true } }) : null,
+      ]);
+      const changes = describeChange(
+        { dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, endTime: slot.endTime, teacherName: slot.teacher.name, venueName: slot.venue?.name ?? null },
+        {
+          dayOfWeek: slot.dayOfWeek,
+          startTime: start,
+          endTime: end,
+          teacherName: newTeacher?.name ?? slot.teacher.name,
+          venueName: newVenue?.name ?? slot.venue?.name ?? null,
+        },
+      );
+      await notifyClassChange({
+        slotId: id,
+        moduleCode: slot.moduleOffering.module.code,
+        sectionIds,
+        changes,
+        date: body.date,
+        reason: body.reason,
+        staffIds: [slot.teacherId, body.teacherId],
+      });
+    }
     reply.code(201);
     return ex;
   });

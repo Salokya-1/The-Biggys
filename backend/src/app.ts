@@ -31,6 +31,7 @@ import { broadcastRoutes } from './routes/broadcast';
 import { attendanceRoutes } from './routes/attendance';
 import { messageRoutes } from './routes/messages';
 import { queryRoutes } from './routes/queries';
+import { bottleneckRoutes } from './routes/bottlenecks';
 import multipart from '@fastify/multipart';
 
 /** Where the app is served from in production. Always accepted, whatever CORS_ORIGIN says. */
@@ -133,6 +134,7 @@ export async function buildApp() {
       await api.register(attendanceRoutes);
       await api.register(messageRoutes);
       await api.register(queryRoutes);
+      await api.register(bottleneckRoutes);
     },
     { prefix: '/api' },
   );
