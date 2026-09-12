@@ -1,5 +1,6 @@
 // The Biggys — RTE Integrated Management System
-// Schema v1. Relationships and constraints follow the build brief §5.
+// Schema v2: v1 (records, results, seating) + sections, academic calendar, timetable,
+// change/absence requests, exam kinds with invigilators, fees and admit cards.
 
 generator client {
   provider = "prisma-client-js"
@@ -61,6 +62,48 @@ enum AdjacencyMode {
   ROW_AND_COLUMN
 }
 
+enum Term {
+  AUTUMN
+  SPRING
+  SUMMER
+}
+
+enum ExamKind {
+  FINAL
+  CLASS_TEST
+  RESIT
+}
+
+enum SeatingMode {
+  MIXED
+  BY_ID
+}
+
+enum ExceptionKind {
+  CANCELLED
+  TEACHER_CHANGE
+  ROOM_CHANGE
+  RESCHEDULED
+}
+
+enum RequestKind {
+  TEACHER_ABSENCE
+  STUDENT_ABSENCE
+  SECTION_SWAP
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum FeeStatus {
+  UNPAID
+  PAID
+  WAIVED
+}
+
 // ---------------------------------------------------------------------------
 // Identity & access
 // ---------------------------------------------------------------------------
@@ -87,6 +130,11 @@ model User {
   auditLogs          AuditLog[]
   notifications      Notification[]
   refreshTokens      RefreshToken[]
+  taughtSlots        TimetableSlot[]  @relation("SlotTeacher")
+  coverSlots         SlotException[]  @relation("ExceptionTeacher")
+  requests           ChangeRequest[]  @relation("Requester")
+  decidedRequests    ChangeRequest[]  @relation("Decider")
+  invigilations      ExamInvigilator[]
 }
 
 model RefreshToken {
@@ -126,22 +174,47 @@ model Intake {
   programme Programme  @relation(fields: [programmeId], references: [id])
   semesters Semester[]
   students  Student[]
+  sections  Section[]
 
   @@unique([programmeId, label])
 }
 
+/// Autumn / Spring: 12 teaching weeks then a 2-week exam window (14 weeks). Summer: retakes.
 model Semester {
-  id        String   @id @default(cuid())
-  intakeId  String
-  number    Int
-  startDate DateTime
-  endDate   DateTime
+  id            String   @id @default(cuid())
+  intakeId      String
+  number        Int
+  term          Term     @default(AUTUMN)
+  startDate     DateTime
+  endDate       DateTime
+  teachingWeeks Int      @default(12)
+  examStart     DateTime? // defaults to startDate + teachingWeeks
+  examEnd       DateTime? // defaults to examStart + 2 weeks
 
   intake          Intake           @relation(fields: [intakeId], references: [id])
   offerings       ModuleOffering[]
   currentStudents Student[]        @relation("CurrentSemester")
+  slots           TimetableSlot[]
+  examSessions    ExamSession[]
+  feeInvoices     FeeInvoice[]
+  admitCards      AdmitCard[]
 
   @@unique([intakeId, number])
+}
+
+/// A class group of ~22–25 students within an intake (A, B, C …). Timetables are per section.
+model Section {
+  id       String @id @default(cuid())
+  intakeId String
+  name     String
+
+  intake       Intake          @relation(fields: [intakeId], references: [id])
+  students     Student[]
+  slots        TimetableSlot[]
+  swapRequests ChangeRequest[] @relation("TargetSection")
+  examSessions ExamSession[]
+
+  @@unique([intakeId, name])
 }
 
 model Student {
@@ -152,6 +225,7 @@ model Student {
   email               String?
   programmeId         String
   intakeId            String
+  sectionId           String?
   currentSemesterId   String?
   status              StudentStatus @default(ACTIVE)
   standing            Standing      @default(GOOD)
@@ -163,11 +237,15 @@ model Student {
   user            User?            @relation(fields: [userId], references: [id])
   programme       Programme        @relation(fields: [programmeId], references: [id])
   intake          Intake           @relation(fields: [intakeId], references: [id])
+  section         Section?         @relation(fields: [sectionId], references: [id])
   currentSemester Semester?        @relation("CurrentSemester", fields: [currentSemesterId], references: [id])
   enrollments     Enrollment[]
   seatAllocations SeatAllocation[]
+  feeInvoices     FeeInvoice[]
+  admitCards      AdmitCard[]
 
   @@index([programmeId, intakeId, status])
+  @@index([sectionId])
   @@index([name])
 }
 
@@ -191,14 +269,15 @@ model ModuleOffering {
   semesterId String
   lecturerId String?
 
-  module       Module                @relation(fields: [moduleId], references: [id])
-  semester     Semester              @relation(fields: [semesterId], references: [id])
-  lecturer     User?                 @relation("OfferingLecturer", fields: [lecturerId], references: [id])
-  components   AssessmentComponent[]
-  enrollments  Enrollment[]
-  markSheets   MarkSheet[]
-  examSessions ExamSession[]
+  module          Module                @relation(fields: [moduleId], references: [id])
+  semester        Semester              @relation(fields: [semesterId], references: [id])
+  lecturer        User?                 @relation("OfferingLecturer", fields: [lecturerId], references: [id])
+  components      AssessmentComponent[]
+  enrollments     Enrollment[]
+  markSheets      MarkSheet[]
+  examSessions    ExamSession[]
   seatAllocations SeatAllocation[]
+  slots           TimetableSlot[]
 
   @@unique([moduleId, semesterId])
 }
@@ -337,21 +416,120 @@ model ImportBatch {
 }
 
 // ---------------------------------------------------------------------------
+// Timetable (one constant weekly routine repeated for the teaching weeks)
+// ---------------------------------------------------------------------------
+
+model TimetableSlot {
+  id               String   @id @default(cuid())
+  semesterId       String
+  sectionId        String
+  moduleOfferingId String
+  teacherId        String
+  venueId          String?
+  dayOfWeek        Int // 1 = Monday … 7 = Sunday
+  startTime        String // "09:00"
+  endTime          String // "10:30"
+  weekFrom         Int      @default(1)
+  weekTo           Int      @default(12)
+  createdAt        DateTime @default(now())
+
+  semester       Semester        @relation(fields: [semesterId], references: [id])
+  section        Section         @relation(fields: [sectionId], references: [id])
+  moduleOffering ModuleOffering  @relation(fields: [moduleOfferingId], references: [id])
+  teacher        User            @relation("SlotTeacher", fields: [teacherId], references: [id])
+  venue          Venue?          @relation(fields: [venueId], references: [id])
+  exceptions     SlotException[]
+  requests       ChangeRequest[]
+
+  @@index([semesterId, sectionId])
+  @@index([teacherId, dayOfWeek])
+  @@index([venueId, dayOfWeek])
+}
+
+/// A one-off change to a slot on a specific date (cover teacher, room move, cancellation, reschedule).
+model SlotException {
+  id          String        @id @default(cuid())
+  slotId      String
+  date        DateTime
+  kind        ExceptionKind
+  teacherId   String?
+  venueId     String?
+  startTime   String?
+  endTime     String?
+  reason      String
+  createdById String?
+  createdAt   DateTime      @default(now())
+
+  slot    TimetableSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  teacher User?         @relation("ExceptionTeacher", fields: [teacherId], references: [id])
+  venue   Venue?        @relation(fields: [venueId], references: [id])
+
+  @@unique([slotId, date])
+}
+
+/// Absence and change requests from teachers and students, approved by RTE (or the module leader).
+model ChangeRequest {
+  id              String        @id @default(cuid())
+  kind            RequestKind
+  requesterId     String
+  slotId          String?
+  date            DateTime
+  targetSectionId String?
+  reason          String
+  status          RequestStatus @default(PENDING)
+  decidedById     String?
+  decidedAt       DateTime?
+  decisionNote    String?
+  createdAt       DateTime      @default(now())
+
+  requester     User           @relation("Requester", fields: [requesterId], references: [id])
+  decidedBy     User?          @relation("Decider", fields: [decidedById], references: [id])
+  slot          TimetableSlot? @relation(fields: [slotId], references: [id])
+  targetSection Section?       @relation("TargetSection", fields: [targetSectionId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requesterId])
+}
+
+// ---------------------------------------------------------------------------
 // Examinations & seating
 // ---------------------------------------------------------------------------
 
 model ExamSession {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   title       String
+  kind        ExamKind    @default(FINAL)
+  seatingMode SeatingMode @default(MIXED)
+  semesterId  String?
   date        DateTime
   startTime   String // "09:00"
   durationMin Int
-  seed        Int      @default(1) // deterministic seating
-  createdAt   DateTime @default(now())
+  seed        Int         @default(1) // deterministic seating
+  generatedBy String? // "auto" | "manual"
+  createdAt   DateTime    @default(now())
 
+  semester        Semester?         @relation(fields: [semesterId], references: [id])
   offerings       ModuleOffering[]
+  sections        Section[]
   venues          Venue[]
   seatAllocations SeatAllocation[]
+  invigilators    ExamInvigilator[]
+
+  @@index([date])
+}
+
+model ExamInvigilator {
+  id            String @id @default(cuid())
+  examSessionId String
+  venueId       String
+  userId        String
+
+  examSession ExamSession @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
+  venue       Venue       @relation(fields: [venueId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
+
+  @@unique([examSessionId, venueId, userId])
+  @@index([userId])
 }
 
 model Venue {
@@ -362,9 +540,13 @@ model Venue {
   cols          Int
   disabledSeats Json          @default("[]") // [{ "row": 3, "col": 4 }, ...]
   adjacencyMode AdjacencyMode @default(ROW)
+  isClassroom   Boolean       @default(true)
 
   examSessions    ExamSession[]
   seatAllocations SeatAllocation[]
+  slots           TimetableSlot[]
+  slotExceptions  SlotException[]
+  invigilations   ExamInvigilator[]
 }
 
 model SeatAllocation {
@@ -386,6 +568,43 @@ model SeatAllocation {
 
   @@unique([examSessionId, studentId])
   @@unique([examSessionId, venueId, row, col])
+}
+
+// ---------------------------------------------------------------------------
+// Fees & admit cards
+// ---------------------------------------------------------------------------
+
+model FeeInvoice {
+  id         String    @id @default(cuid())
+  studentId  String
+  semesterId String
+  amount     Decimal   @db.Decimal(12, 2)
+  currency   String    @default("NPR")
+  status     FeeStatus @default(UNPAID)
+  dueDate    DateTime
+  paidAt     DateTime?
+  method     String?
+  reference  String?
+  createdAt  DateTime  @default(now())
+
+  student  Student  @relation(fields: [studentId], references: [id])
+  semester Semester @relation(fields: [semesterId], references: [id])
+
+  @@unique([studentId, semesterId])
+}
+
+model AdmitCard {
+  id         String   @id @default(cuid())
+  studentId  String
+  semesterId String
+  cardNo     String   @unique
+  issuedAt   DateTime @default(now())
+  issuedById String?
+
+  student  Student  @relation(fields: [studentId], references: [id])
+  semester Semester @relation(fields: [semesterId], references: [id])
+
+  @@unique([studentId, semesterId])
 }
 
 // ---------------------------------------------------------------------------
