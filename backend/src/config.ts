@@ -14,6 +14,7 @@ const schema = z.object({
   GIT_SHA: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : undefined)),
   OPENROUTER_MODEL: z.string().default('nvidia/nemotron-3-ultra-550b-a55b:free'),
+  OPENROUTER_FALLBACK_MODELS: z.string().default('nvidia/nemotron-3-super-120b-a12b:free,nvidia/nemotron-3.5-lightning:free'),
 });
 
 const parsed = schema.safeParse(process.env);

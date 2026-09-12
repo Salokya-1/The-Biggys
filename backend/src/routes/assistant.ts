@@ -93,34 +93,88 @@ interface Msg {
   name?: string;
 }
 
-async function callOpenRouter(messages: Msg[], tools: ToolDef[]): Promise<Msg & { usage?: unknown }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { authorization: `Bearer ${config.OPENROUTER_API_KEY}`, 'content-type': 'application/json', 'HTTP-Referer': 'https://github.com/Salokya-1/The-Biggys', 'X-Title': 'RTE IMS assistant' },
-      body: JSON.stringify({
-        model: config.OPENROUTER_MODEL,
-        messages,
-        tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
-        tool_choice: 'auto',
-        temperature: 0.2,
-        max_tokens: 1200,
-      }),
-      signal: controller.signal,
-    });
-    const json = (await res.json()) as { choices?: { message: Msg }[]; error?: { message: string }; usage?: unknown };
-    if (!res.ok || json.error) throw new HttpError(502, `AI provider error: ${json.error?.message ?? res.statusText}`);
-    const m = json.choices?.[0]?.message;
-    if (!m) throw new HttpError(502, 'AI provider returned no message');
-    return { ...m, usage: json.usage };
-  } finally {
-    clearTimeout(timer);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** One completion with automatic provider fallback and retries on 429/5xx (free models are shared). */
+async function callOpenRouter(messages: Msg[], tools: ToolDef[]): Promise<Msg & { usage?: unknown; model?: string }> {
+  const fallbacks = config.OPENROUTER_FALLBACK_MODELS.split(',').map((s) => s.trim()).filter(Boolean);
+  const models = [config.OPENROUTER_MODEL, ...fallbacks.filter((m) => m !== config.OPENROUTER_MODEL)];
+  let lastError = 'unknown error';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 120_000);
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${config.OPENROUTER_API_KEY}`, 'content-type': 'application/json', 'HTTP-Referer': 'https://github.com/Salokya-1/The-Biggys', 'X-Title': 'RTE IMS assistant' },
+        body: JSON.stringify({
+          model: models[0],
+          models,
+          messages,
+          tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
+          tool_choice: 'auto',
+          temperature: 0.2,
+          max_tokens: 1200,
+          reasoning: { effort: 'low' },
+        }),
+        signal: controller.signal,
+      });
+      const json = (await res.json()) as { choices?: { message: Msg }[]; error?: { message: string; code?: number }; usage?: unknown; model?: string };
+      if (res.ok && !json.error) {
+        const m = json.choices?.[0]?.message;
+        if (!m) throw new HttpError(502, 'AI provider returned no message');
+        return { ...m, usage: json.usage, model: json.model };
+      }
+      lastError = json.error?.message ?? res.statusText;
+      const status = json.error?.code ?? res.status;
+      if (status === 429 || status >= 500) {
+        await sleep(2000 * (attempt + 1));
+        continue;
+      }
+      throw new HttpError(502, `AI provider error: ${lastError}`);
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      lastError = (err as Error).name === 'AbortError' ? 'timed out after 120 s' : (err as Error).message;
+      await sleep(2000 * (attempt + 1));
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw new HttpError(502, `AI provider error after retries: ${lastError}`);
 }
 
-const clip = (s: string, n = 6000) => (s.length > n ? `${s.slice(0, n)}… [truncated ${s.length - n} chars]` : s);
+const clip = (s: string, n = 10000) => (s.length > n ? `${s.slice(0, n)}… [truncated ${s.length - n} chars — ask for a narrower query]` : s);
+
+/** Trim large responses to what the model needs, so the important facts never fall off the end. */
+function shape(tool: string, json: unknown): unknown {
+  const j = json as Record<string, unknown>;
+  const pickStudent = (s: Record<string, unknown>) => ({ id: s.id, studentId: s.studentId, name: s.name, status: s.status, standing: s.standing, programme: (s.programme as Record<string, unknown>)?.code, intake: (s.intake as Record<string, unknown>)?.label, section: (s.section as Record<string, unknown> | null)?.name ?? null, currentSemester: (s.currentSemester as Record<string, unknown> | null)?.number ?? null });
+  switch (tool) {
+    case 'list_programmes':
+      return (json as Record<string, unknown>[]).map((p) => ({ id: p.id, code: p.code, name: p.name, students: (p._count as Record<string, number>)?.students, intakes: (p.intakes as Record<string, unknown>[]).map((i) => ({ id: i.id, label: i.label, semesters: (i.semesters as Record<string, unknown>[]).map((s) => ({ id: s.id, number: s.number, term: s.term, startDate: String(s.startDate).slice(0, 10) })) })) }));
+    case 'search_students':
+      return { ...j, items: (j.items as Record<string, unknown>[]).map(pickStudent) };
+    case 'get_student': {
+      const st = j.student as Record<string, unknown>;
+      return { student: { ...pickStudent(st), email: st.email, specialNeedsSeating: st.specialNeedsSeating }, stats: j.stats, semesters: (j.semesters as Record<string, unknown>[]).map((s) => ({ number: s.number, summary: s.summary, modules: (s.modules as Record<string, unknown>[]).map((m) => ({ code: (m.module as Record<string, unknown>).code, attempt: m.attempt, result: m.result })) })) };
+    }
+    case 'list_offerings':
+      return (json as Record<string, unknown>[]).map((o) => ({ id: o.id, module: (o.module as Record<string, unknown>).code, title: (o.module as Record<string, unknown>).title, semester: `${(((o.semester as Record<string, unknown>).intake as Record<string, unknown>).programme as Record<string, unknown>).code} ${((o.semester as Record<string, unknown>).intake as Record<string, unknown>).label} S${(o.semester as Record<string, unknown>).number}`, semesterId: (o.semester as Record<string, unknown>).id, lecturer: (o.lecturer as Record<string, unknown> | null)?.name ?? null, enrolled: (o._count as Record<string, number>).enrollments, components: (o.components as Record<string, unknown>[]).map((c) => `${c.name} ${c.weight}%`), markSheet: (o.markSheets as Record<string, unknown>[])[0] ?? null }));
+    case 'get_marksheet':
+      return { sheet: j.sheet, offering: { id: (j.offering as Record<string, unknown>).id, module: ((j.offering as Record<string, unknown>).module as Record<string, unknown>).code, components: (j.offering as Record<string, unknown>).components }, validation: j.validation, flags: j.flags, actions: j.actions, editable: j.editable, rows: (j.rows as Record<string, unknown>[]).map((r) => ({ enrollmentId: r.enrollmentId, studentId: (r.student as Record<string, unknown>).studentId, name: (r.student as Record<string, unknown>).name, marks: r.marks, computed: r.computed ? { overall: (r.computed as Record<string, unknown>).overallMark, grade: (r.computed as Record<string, unknown>).grade, outcome: (r.computed as Record<string, unknown>).outcome } : null })) };
+    case 'get_exam':
+      return { ...j, allocations: `${(j.allocations as unknown[]).length} seats allocated (use the exam page or lookup for individual seats)` };
+    case 'timetable_week':
+    case 'my_timetable':
+      return { monday: j.monday, days: (j.days as Record<string, unknown>[]).map((d) => ({ date: d.date, items: (d.items as Record<string, unknown>[]).map((i) => ({ kind: i.kind, time: `${i.startTime}–${i.endTime}`, title: i.title, section: (i.section as Record<string, unknown> | null)?.name, teacher: (i.teacher as Record<string, unknown> | null)?.name, venue: (i.venue as Record<string, unknown> | null)?.name, status: i.status, slotId: i.slotId, examSessionId: i.examSessionId, seat: i.seat })) })) };
+    case 'list_timetable_slots':
+      return (json as Record<string, unknown>[]).map((s) => ({ id: s.id, day: s.dayOfWeek, time: `${s.startTime}–${s.endTime}`, module: ((s.moduleOffering as Record<string, unknown>).module as Record<string, unknown>).code, section: (s.section as Record<string, unknown>).name, teacher: (s.teacher as Record<string, unknown>).name, teacherId: s.teacherId, venue: (s.venue as Record<string, unknown> | null)?.name, venueId: s.venueId }));
+    case 'list_fees':
+      return { summary: j.summary, items: (j.items as Record<string, unknown>[]).slice(0, 100).map((i) => ({ id: i.id, studentId: (i.student as Record<string, unknown>).studentId, name: (i.student as Record<string, unknown>).name, amount: i.amount, status: i.status, semester: (i.semester as Record<string, unknown>).number })) };
+    default:
+      return json;
+  }
+}
 
 export async function assistantRoutes(app: FastifyInstance) {
   app.get('/assistant/status', async () => ({ enabled: !!config.OPENROUTER_API_KEY, model: config.OPENROUTER_MODEL, tools: TOOLS.map((t) => t.name) }));
@@ -137,7 +191,7 @@ export async function assistantRoutes(app: FastifyInstance) {
       convo.push({ role: 'assistant', content: reply.content ?? '', tool_calls: reply.tool_calls });
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
         if (actions.length) await audit(prisma, { ...actorOf(req), action: 'assistant.actions', entityType: 'Assistant', entityId: req.user!.id, after: actions.map((a) => ({ tool: a.tool, status: a.status })) });
-        return { reply: reply.content ?? '', actions, model: config.OPENROUTER_MODEL };
+        return { reply: reply.content ?? '', actions, model: reply.model ?? config.OPENROUTER_MODEL };
       }
       for (const call of reply.tool_calls) {
         const tool = TOOLS.find((t) => t.name === call.function.name);
@@ -169,7 +223,15 @@ export async function assistantRoutes(app: FastifyInstance) {
         }
         actions.push({ tool: tool.name, args, status: res.statusCode, ok, summary });
         req.log.info({ tool: tool.name, status: res.statusCode }, 'assistant.tool');
-        convo.push({ role: 'tool', tool_call_id: call.id, name: tool.name, content: clip(res.headers['content-type']?.toString().includes('json') ? text : `[${res.headers['content-type']} ${text.length} bytes]`) });
+        let content: string;
+        if (res.headers['content-type']?.toString().includes('json')) {
+          try {
+            content = JSON.stringify(ok ? shape(tool.name, JSON.parse(text)) : JSON.parse(text));
+          } catch {
+            content = text;
+          }
+        } else content = `[${res.headers['content-type']} ${text.length} bytes]`;
+        convo.push({ role: 'tool', tool_call_id: call.id, name: tool.name, content: clip(content) });
       }
     }
     return { reply: 'I stopped after several steps without a final answer — please check what changed and ask again.', actions, model: config.OPENROUTER_MODEL };
