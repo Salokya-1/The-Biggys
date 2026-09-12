@@ -6,6 +6,7 @@ const { join } = require('node:path');
 function sha() {
   const env =
     process.env.GIT_SHA ||
+    process.env.RENDER_GIT_COMMIT ||
     process.env.SOURCE_COMMIT ||
     process.env.COMMIT_SHA ||
     process.env.VERCEL_GIT_COMMIT_SHA;

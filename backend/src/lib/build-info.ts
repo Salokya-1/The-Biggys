@@ -23,7 +23,9 @@ function load(): BuildInfo {
   const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8')) as {
     version: string;
   };
-  let commit = config.GIT_SHA ?? 'unknown';
+  // The host usually knows the commit even when nothing set GIT_SHA, and a version endpoint that
+  // reports a stale build is worse than one that reports nothing.
+  let commit = config.GIT_SHA ?? config.RENDER_GIT_COMMIT ?? 'unknown';
   let builtAt = 'dev';
   const file = join(__dirname, '..', 'build-info.json');
   if (existsSync(file)) {

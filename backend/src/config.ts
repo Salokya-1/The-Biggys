@@ -14,6 +14,8 @@ const schema = z.object({
   SEED_ON_EMPTY: z.enum(['true', 'false']).default('true'),
   RESEED_ON_START: z.enum(['true', 'false']).default('false'),
   GIT_SHA: z.string().optional(),
+  /** Render sets this on every build and at runtime; it saves wiring GIT_SHA by hand. */
+  RENDER_GIT_COMMIT: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : undefined)),
   OPENROUTER_MODEL: z.string().default('nvidia/nemotron-3-ultra-550b-a55b:free'),
   OPENROUTER_FALLBACK_MODELS: z.string().default('nvidia/nemotron-3-super-120b-a12b:free,nvidia/nemotron-3.5-lightning:free'),
