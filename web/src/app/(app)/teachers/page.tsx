@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CalendarOff, Plus, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ApiError, api, qs } from '@/lib/api';
+import { useDebounced } from '@/lib/use-debounced';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import type { TeacherOverview } from '@/lib/types';
@@ -35,7 +36,14 @@ export default function TeachersPage() {
   const [open, setOpen] = useState<string | null>(null);
   const [block, setBlock] = useState<{ teacherId: string; name: string; dayOfWeek: number; startTime: string; endTime: string; reason: string } | null>(null);
 
-  const list = useQuery({ queryKey: ['teachers-overview', q], queryFn: () => api<TeacherOverview[]>(`/api/teachers/overview${qs({ q: q || undefined })}`) });
+  // The box keeps every letter; the query waits for the word. Keeping the previous rows on screen
+  // while the next set loads stops the list collapsing and re-flowing under the cursor.
+  const search = useDebounced(q);
+  const list = useQuery({
+    queryKey: ['teachers-overview', search],
+    queryFn: () => api<TeacherOverview[]>(`/api/teachers/overview${qs({ q: search || undefined })}`),
+    placeholderData: keepPreviousData,
+  });
 
   /**
    * Classes the window would take the teacher out of, held back until somebody says go ahead.

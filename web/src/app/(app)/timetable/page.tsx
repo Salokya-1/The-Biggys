@@ -20,6 +20,7 @@ import { CombineClasses } from '@/components/combine-classes';
 import { TakeRegister } from '@/components/take-register';
 import { api, ApiError, downloadWithAuth, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { yearAndSemester } from '@/lib/academic-year';
 import { cn } from '@/lib/utils';
 import type { SlotCandidate } from '@/lib/types';
 
@@ -272,9 +273,17 @@ export default function TimetablePage() {
 
       <div className="flex flex-wrap items-center gap-2">
         {semesters.data && (
-          <Select value={sem?.id ?? ''} onValueChange={(v) => { setSemesterId(v ?? ''); setWeek(0); setSectionId('all'); }} items={Object.fromEntries(semesters.data.map((s) => [s.id, `${s.intake.programme.code} ${s.intake.label} · Sem ${s.number}`]))}>
+          <Select value={sem?.id ?? ''} onValueChange={(v) => { setSemesterId(v ?? ''); setWeek(0); setSectionId('all'); }} items={Object.fromEntries(semesters.data.map((s) => [s.id, `${s.intake.programme.code} ${s.intake.label} · ${yearAndSemester(s.number)}`]))}>
             <SelectTrigger className="w-72"><SelectValue placeholder="Semester" /></SelectTrigger>
-            <SelectContent>{semesters.data.map((s) => <SelectItem key={s.id} value={s.id}>{s.intake.programme.code} {s.intake.label} · Sem {s.number} ({s.term.toLowerCase()}){s._count.slots ? '' : ' · no routine'}</SelectItem>)}</SelectContent>
+            {/* Grouped by year of the programme, because that is how a routine is talked about;
+                the semester is still named on every line since it is what a routine belongs to. */}
+            <SelectContent>
+              {semesters.data.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.intake.programme.code} {s.intake.label} · {yearAndSemester(s.number)} ({s.term.toLowerCase()}){s._count.slots ? '' : ' · no routine'}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         )}
         <div className="flex items-center gap-1">

@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ApiError, api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { YEARS, semestersInYear, yearAndSemester, yearLabel, yearOfSemester } from '@/lib/academic-year';
 import { cn } from '@/lib/utils';
 import type { ExamSessionListItem, Venue } from '@/lib/types';
 
@@ -59,6 +60,11 @@ export default function ExamsPage() {
   const semesters = useQuery({ queryKey: ['tt', 'semesters'], queryFn: () => api<Semester[]>('/api/timetable/semesters'), enabled: open || scheduleOpen });
   const [form, setForm] = useState({ title: '', kind: (isAdmin ? 'FINAL' : 'CLASS_TEST') as 'FINAL' | 'CLASS_TEST' | 'RESIT', seatingMode: 'MIXED' as 'MIXED' | 'BY_ID', date: '', startTime: '09:00', durationMin: 120, seed: 1, offeringIds: [] as string[], venueIds: [] as string[], sectionIds: [] as string[], invigilators: {} as Record<string, string> });
   const [scheduleSemester, setScheduleSemester] = useState('');
+  // People ask for "the second years", not "semesters three and four". Year narrows the list;
+  // semester stays available inside it, because an exam belongs to one semester and half a year's
+  // sittings are not the same thing as the year's.
+  const [year, setYear] = useState('all');
+  const [semester, setSemester] = useState('all');
 
   // sections available = sections of the intakes of the chosen offerings
   const sectionOptions = useMemo(() => {
@@ -117,6 +123,16 @@ export default function ExamsPage() {
     !needle.trim() || hay.filter(Boolean).join(' ').toLowerCase().includes(needle.trim().toLowerCase());
   const toggle = (key: 'offeringIds' | 'venueIds' | 'sectionIds', id: string, on: boolean) => setForm((f) => ({ ...f, [key]: on ? [...f[key], id] : f[key].filter((x) => x !== id) }));
 
+  /** An exam's year comes from the semester its modules sit in; a session spans only one. */
+  const semesterOf = (e: ExamSessionListItem) => e.offerings[0]?.semester.number ?? null;
+  const shown = (exams.data ?? []).filter((e) => {
+    const n = semesterOf(e);
+    if (n === null) return year === 'all';
+    if (year !== 'all' && yearOfSemester(n) !== Number(year)) return false;
+    if (semester !== 'all' && n !== Number(semester)) return false;
+    return true;
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -132,6 +148,38 @@ export default function ExamsPage() {
 
       {exams.isError && <Alert variant="destructive"><AlertDescription>{(exams.error as Error).message}</AlertDescription></Alert>}
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          value={year}
+          onValueChange={(v) => { setYear(v ?? 'all'); setSemester('all'); }}
+          items={{ all: 'Every year', ...Object.fromEntries(YEARS.map((y) => [String(y), yearLabel(y)])) }}
+        >
+          <SelectTrigger className="w-56"><SelectValue placeholder="Year" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Every year</SelectItem>
+            {YEARS.map((y) => <SelectItem key={y} value={String(y)}>{yearLabel(y)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        {year !== 'all' && (
+          <Select
+            value={semester}
+            onValueChange={(v) => setSemester(v ?? 'all')}
+            items={{ all: 'Both semesters', ...Object.fromEntries(semestersInYear(Number(year)).map((n) => [String(n), `Semester ${n}`])) }}
+          >
+            <SelectTrigger className="w-44"><SelectValue placeholder="Semester" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Both semesters</SelectItem>
+              {semestersInYear(Number(year)).map((n) => <SelectItem key={n} value={String(n)}>Semester {n}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+
+        <span className="text-sm text-muted-foreground">
+          {shown.length} of {exams.data?.length ?? 0} sitting{(exams.data?.length ?? 0) === 1 ? '' : 's'}
+        </span>
+      </div>
+
       <div className="overflow-x-auto border bg-card">
         <Table>
           <TableHeader>
@@ -139,10 +187,14 @@ export default function ExamsPage() {
           </TableHeader>
           <TableBody>
             {exams.isPending && Array.from({ length: 3 }).map((_, i) => <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}</TableRow>)}
-            {exams.data?.length === 0 && <TableRow><TableCell colSpan={7} className="py-10 text-center text-muted-foreground">No exam sessions yet.</TableCell></TableRow>}
-            {exams.data?.map((e) => (
+            {shown.length === 0 && !exams.isPending && <TableRow><TableCell colSpan={7} className="py-10 text-center text-muted-foreground">{exams.data?.length ? 'No exam sits in that year.' : 'No exam sessions yet.'}</TableCell></TableRow>}
+            {shown.map((e) => (
               <TableRow key={e.id}>
-                <TableCell><Link href={`/exams/${e.id}`} className="font-medium hover:underline">{e.title}</Link>{e.generatedBy === 'auto' && <div className="text-[10px] uppercase tracking-wide text-muted-foreground">auto-scheduled</div>}</TableCell>
+                <TableCell>
+                  <Link href={`/exams/${e.id}`} className="font-medium hover:underline">{e.title}</Link>
+                  {semesterOf(e) !== null && <div className="text-[11px] text-muted-foreground">{yearAndSemester(semesterOf(e)!)}</div>}
+                  {e.generatedBy === 'auto' && <div className="text-[10px] uppercase tracking-wide text-muted-foreground">auto-scheduled</div>}
+                </TableCell>
                 <TableCell><Badge variant="outline" className={cn('border-transparent', KIND_STYLE[e.kind])}>{e.kind.replace('_', ' ')}</Badge>{e.seatingMode === 'BY_ID' && <div className="text-[10px] text-muted-foreground">by ID order</div>}</TableCell>
                 <TableCell className="text-sm">{new Date(e.date).toLocaleDateString()} {e.startTime} · {e.durationMin} min</TableCell>
                 <TableCell className="text-xs">{e.offerings.map((o) => o.module.code).join(', ')}{e.sections.length ? ` · sections ${e.sections.map((s) => s.name).join(', ')}` : ''}</TableCell>

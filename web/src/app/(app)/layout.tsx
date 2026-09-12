@@ -22,29 +22,37 @@ interface NavItem {
   roles: Role[];
   /** Extra capability gate: the entry is hidden when the account lacks it. */
   needs?: string;
+  /**
+   * Entries with a section are gathered under that heading, below the ungrouped ones. Used for the
+   * screens somebody opens occasionally rather than daily — keeping them in the main run pushes
+   * the work people actually do down past the fold.
+   */
+  section?: string;
 }
 
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'MODULE_LEADER'] },
   { href: '/students', label: 'Students', icon: Users, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { href: '/teachers', label: 'Teachers', icon: GraduationCap, roles: ['ADMIN', 'MODULE_LEADER'], needs: 'timetable.read' },
   { href: '/modules', label: 'Modules', icon: BookOpen, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/marksheets', label: 'Mark sheets', icon: ClipboardCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/timetable', label: 'Timetable', icon: CalendarClock, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/exams', label: 'Exams', icon: CalendarDays, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { href: '/attendance', label: 'Attendance', icon: UserCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'attendance.read' },
   { href: '/requests', label: 'Requests', icon: Inbox, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
+  { href: '/queries', label: 'Queries', icon: MessageCircleQuestion, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'], needs: 'query.raise' },
+  { href: '/messages', label: 'Messages', icon: MessageSquare, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'], needs: 'message.use' },
   { href: '/alerts', label: 'Class alerts', icon: TriangleAlert, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'timetable.read' },
   { href: '/bottlenecks', label: 'Bottlenecks', icon: Gauge, roles: ['ADMIN', 'MODULE_LEADER'], needs: 'dashboard.read' },
   { href: '/announcements', label: 'Announcements', icon: Megaphone, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'timetable.read' },
-  { href: '/attendance', label: 'Attendance', icon: UserCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'attendance.read' },
-  { href: '/messages', label: 'Messages', icon: MessageSquare, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'], needs: 'message.use' },
-  { href: '/queries', label: 'Queries', icon: MessageCircleQuestion, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'], needs: 'query.raise' },
-  { href: '/teachers', label: 'Teachers', icon: GraduationCap, roles: ['ADMIN', 'MODULE_LEADER'], needs: 'timetable.read' },
   { href: '/venues', label: 'Rooms', icon: Building2, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'seating.read' },
-  { href: '/camera', label: 'Camera access', icon: Video, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'camera.read' },
-  { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'fees.read' },
   { href: '/retakes', label: 'Retakes', icon: Sun, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'module.read' },
-  { href: '/admin/users', label: 'Users', icon: ShieldCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage' },
-  { href: '/import', label: 'Import', icon: FileSpreadsheet, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage' },
+
+  { href: '/camera', label: 'Camera access', icon: Video, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'camera.read', section: 'Additional features' },
+  { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'fees.read', section: 'Additional features' },
+  { href: '/admin/users', label: 'Users', icon: ShieldCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage', section: 'Additional features' },
+  { href: '/import', label: 'Import', icon: FileSpreadsheet, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage', section: 'Additional features' },
+
   { href: '/me', label: 'My results', icon: GraduationCap, roles: ['STUDENT'] },
   { href: '/me/exams', label: 'My exam seats', icon: Armchair, roles: ['STUDENT'] },
   { href: '/me/fees', label: 'Fees & admit card', icon: Receipt, roles: ['STUDENT'] },
@@ -76,6 +84,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   const items = NAV.filter((n) => n.roles.includes(user.role) && (!n.needs || can(n.needs)));
+  const main = items.filter((n) => !n.section);
+  const sections = [...new Set(items.filter((n) => n.section).map((n) => n.section!))];
 
   return (
     // The rail is fixed: only the content column scrolls, so navigation stays put on a long page.
@@ -90,22 +100,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <p className="mt-3 text-[11px] font-medium uppercase tracking-widest text-sidebar-foreground/70">KramIQ · RTE Management System</p>
         </div>
         <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
-          {items.map((n) => {
-            const active = pathname === n.href || (n.href !== '/me' && pathname.startsWith(n.href + '/'));
-            return (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={cn(
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
-                  active ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                )}
-              >
-                <n.icon className="h-4 w-4" />
-                {n.label}
-              </Link>
-            );
-          })}
+          {main.map((n) => (
+            <NavLink key={n.href} item={n} pathname={pathname} />
+          ))}
+          {sections.map((section) => (
+            <div key={section} className="pt-3">
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">{section}</p>
+              <div className="space-y-1">
+                {items.filter((n) => n.section === section).map((n) => (
+                  <NavLink key={n.href} item={n} pathname={pathname} />
+                ))}
+              </div>
+            </div>
+          ))}
         </nav>
         <div className="border-t border-sidebar-border p-3">
           <div className="mb-1 [&_button]:text-sidebar-foreground [&_button:hover]:bg-sidebar-accent [&_button:hover]:text-sidebar-accent-foreground">
@@ -163,5 +170,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
       <Assistant />
     </div>
+  );
+}
+
+/** One entry in the rail. */
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = pathname === item.href || (item.href !== '/me' && pathname.startsWith(item.href + '/'));
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+        active ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+      )}
+    >
+      <item.icon className="h-4 w-4" />
+      {item.label}
+    </Link>
   );
 }

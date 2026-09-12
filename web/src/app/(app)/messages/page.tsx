@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { MessageSquare, Search, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
+import { useDebounced } from '@/lib/use-debounced';
 import { cn } from '@/lib/utils';
 
 interface Person { id: string; name: string; role: string; studentId: string | null; programme: string | null }
@@ -29,10 +30,12 @@ export default function MessagesPage() {
   const endRef = useRef<HTMLDivElement>(null);
 
   const threads = useQuery({ queryKey: ['threads'], queryFn: () => api<Thread[]>('/api/messages/threads'), refetchInterval: 30_000 });
+  const debounced = useDebounced(search);
   const people = useQuery({
-    queryKey: ['people', search],
-    queryFn: () => api<Person[]>(`/api/messages/people?q=${encodeURIComponent(search)}`),
-    enabled: search.trim().length >= 2,
+    queryKey: ['people', debounced],
+    queryFn: () => api<Person[]>(`/api/messages/people?q=${encodeURIComponent(debounced)}`),
+    enabled: debounced.trim().length >= 2,
+    placeholderData: keepPreviousData,
   });
   const convo = useQuery({
     queryKey: ['convo', openWith],
