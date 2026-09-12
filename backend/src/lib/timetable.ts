@@ -287,10 +287,58 @@ export function generateTimetable(
     });
   });
 
+  // The fallback passes can leave a hole in a section's day. The two-hour rule is a promise to
+  // students rather than a preference, so pull those classes earlier where the section, the
+  // teacher and a room are all free. Moves stay on the same day, so the year's pattern holds.
+  compactGaps(slots, sections, rooms, periodsOrUndefined, existing);
+
   const ordered = slots.sort((a, b) => a.dayOfWeek - b.dayOfWeek || toMinutes(a.startTime) - toMinutes(b.startTime) || a.sectionId.localeCompare(b.sectionId));
   const gapMap = new Map(sections.map((s) => [s.id, s.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN]));
   const gapViolations = findGapViolations(ordered).filter((v) => v.gapMinutes > (gapMap.get(v.sectionId) ?? DEFAULT_MAX_GAP_MIN));
   return { slots: ordered, unplaced, gapViolations };
+}
+
+/** Close gaps left by the fallback passes by moving the class after the hole earlier. */
+function compactGaps(slots: TtSlot[], sections: TtSection[], rooms: TtRoom[], periodsOrUndefined: Period[] | undefined, existing: ExistingBooking[]): void {
+  const byId = new Map(sections.map((s) => [s.id, s]));
+  const smallestFirst = [...rooms].sort((a, b) => a.capacity - b.capacity || a.name.localeCompare(b.name));
+
+  for (let pass = 0; pass < 4; pass++) {
+    const gaps = findGapViolations(slots).filter((g) => g.gapMinutes > (byId.get(g.sectionId)?.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN));
+    if (!gaps.length) return;
+    let moved = false;
+
+    for (const g of gaps) {
+      const section = byId.get(g.sectionId);
+      const i = slots.findIndex((s) => s.sectionId === g.sectionId && s.dayOfWeek === g.dayOfWeek && s.startTime === g.before);
+      if (i < 0) continue;
+      const slot = slots[i];
+
+      // Everything booked apart from the class we are trying to move.
+      const others = slots.filter((_, j) => j !== i);
+      const busy = (key: 'sectionId' | 'teacherId' | 'venueId', value: string | null, p: Period) =>
+        value !== null &&
+        (others.some((s) => s[key] === value && s.dayOfWeek === p.dayOfWeek && overlaps(s.startTime, s.endTime, p.startTime, p.endTime)) ||
+          existing.some((b) => (key === 'sectionId' ? b.sectionId : key === 'teacherId' ? b.teacherId : b.venueId) === value && b.dayOfWeek === p.dayOfWeek && overlaps(b.startTime, b.endTime, p.startTime, p.endTime)));
+
+      // Only earlier periods inside the hole are worth trying — they are what closes it.
+      const candidates = (section?.periods ?? periodsOrUndefined ?? STANDARD_PERIODS)
+        .filter((p) => p.dayOfWeek === g.dayOfWeek)
+        .filter((p) => !section?.latestEnd || toMinutes(p.endTime) <= toMinutes(section.latestEnd))
+        .filter((p) => toMinutes(p.startTime) >= toMinutes(g.after) && toMinutes(p.startTime) < toMinutes(g.before))
+        .sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+
+      for (const p of candidates) {
+        if (busy('sectionId', slot.sectionId, p) || busy('teacherId', slot.teacherId, p)) continue;
+        const room = busy('venueId', slot.venueId, p) ? smallestFirst.find((r) => r.capacity >= (section?.size ?? 0) && !busy('venueId', r.id, p)) : { id: slot.venueId };
+        if (!room) continue;
+        slots[i] = { ...slot, startTime: p.startTime, endTime: p.endTime, venueId: room.id };
+        moved = true;
+        break;
+      }
+    }
+    if (!moved) return;
+  }
 }
 
 export interface Clash {
@@ -376,17 +424,24 @@ export function suggestSlots(args: {
 }
 
 /** Concrete calendar date of a weekly slot in week `week` (1-based) of a semester starting on `semesterStart`. */
+/**
+ * The calendar date of one weekday in one teaching week.
+ *
+ * Weeks run Sunday to Saturday because the teaching week here is Sunday to Friday, so week 1 is
+ * the week containing the semester's start date, counted from its Sunday. `dayOfWeek` is the ISO
+ * number (1 = Monday … 7 = Sunday).
+ */
 export function slotDate(semesterStart: Date, week: number, dayOfWeek: number): Date {
   const start = new Date(semesterStart);
-  const offsetToMonday = (start.getUTCDay() + 6) % 7;
-  const monday = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() - offsetToMonday));
-  return new Date(monday.getTime() + ((week - 1) * 7 + (dayOfWeek - 1)) * 86400e3);
+  const sunday = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() - start.getUTCDay()));
+  const indexInWeek = dayOfWeek === 7 ? 0 : dayOfWeek; // Sunday first
+  return new Date(sunday.getTime() + ((week - 1) * 7 + indexInWeek) * 86400e3);
 }
 
 /** Week number (1-based) of a date within a semester, or null when outside the teaching weeks. */
 export function weekOf(semesterStart: Date, date: Date, teachingWeeks: number): number | null {
-  const monday = slotDate(semesterStart, 1, 1);
-  const diff = Math.floor((Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - monday.getTime()) / 86400e3);
+  const sunday = slotDate(semesterStart, 1, 7);
+  const diff = Math.floor((Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - sunday.getTime()) / 86400e3);
   if (diff < 0) return null;
   const week = Math.floor(diff / 7) + 1;
   return week <= teachingWeeks ? week : null;

@@ -284,17 +284,18 @@ export async function timetableRoutes(app: FastifyInstance) {
     const scope = await scopeFor(req, q);
     const u = req.user!;
     const filter = { ...scope, semesterId: q.semesterId, ...(u.role === 'LECTURER' || u.role === 'MODULE_LEADER' ? (!q.sectionId && !q.teacherId && !q.venueId ? { teacherId: u.id } : {}) : {}) };
-    let monday: Date;
+    // The teaching week runs Sunday to Friday, so a week starts on its Sunday.
+    let weekStart: Date;
     if (q.semesterId && q.week) {
       const sem = await prisma.semester.findUnique({ where: { id: q.semesterId } });
       if (!sem) throw notFound('Semester not found');
-      monday = slotDate(sem.startDate, q.week, 1);
+      weekStart = slotDate(sem.startDate, q.week, 7);
     } else {
       const d = q.date ? parseDay(q.date) : new Date();
-      monday = slotDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())), 1, 1);
+      weekStart = slotDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())), 1, 7);
     }
-    const days = await Promise.all(Array.from({ length: 7 }, (_, i) => new Date(monday.getTime() + i * 86400e3)).map(async (d) => ({ date: dayIso(d), items: await buildDay(d, filter) })));
-    return { monday: dayIso(monday), days };
+    const days = await Promise.all(Array.from({ length: 7 }, (_, i) => new Date(weekStart.getTime() + i * 86400e3)).map(async (d) => ({ date: dayIso(d), items: await buildDay(d, filter) })));
+    return { weekStart: dayIso(weekStart), monday: dayIso(new Date(weekStart.getTime() + 86400e3)), days };
   });
 
   // teachers: everything I teach this week / today (convenience for the mobile app)
@@ -302,10 +303,10 @@ export async function timetableRoutes(app: FastifyInstance) {
     const u = req.user!;
     const scope = await scopeFor(req, {});
     const today = new Date();
-    const monday = slotDate(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())), 1, 1);
+    const weekStart = slotDate(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())), 1, 7);
     const filter = u.role === 'STUDENT' ? scope : { teacherId: u.id };
-    const days = await Promise.all(Array.from({ length: 7 }, (_, i) => new Date(monday.getTime() + i * 86400e3)).map(async (d) => ({ date: dayIso(d), items: await buildDay(d, filter) })));
-    return { monday: dayIso(monday), days };
+    const days = await Promise.all(Array.from({ length: 7 }, (_, i) => new Date(weekStart.getTime() + i * 86400e3)).map(async (d) => ({ date: dayIso(d), items: await buildDay(d, filter) })));
+    return { weekStart: dayIso(weekStart), monday: dayIso(new Date(weekStart.getTime() + 86400e3)), days };
   });
 
   // staff directory of teachers (for cover / teacher change pickers)

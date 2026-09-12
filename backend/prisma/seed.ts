@@ -41,8 +41,11 @@ const gauss = (mean: number, sd: number) => {
 };
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
-const FIRST = ['Aarav', 'Anisha', 'Bibek', 'Binita', 'Dipesh', 'Diya', 'Kiran', 'Kritika', 'Manish', 'Nisha', 'Prabin', 'Pratima', 'Rajan', 'Rojina', 'Sagar', 'Samiksha', 'Sandesh', 'Shristi', 'Sujan', 'Sunita', 'Utsav', 'Yashoda', 'Nabin', 'Pooja', 'Rohan', 'Sneha', 'Bishal', 'Aayush', 'Priya', 'Suman'];
-const LAST = ['Shrestha', 'Karki', 'Rai', 'Gurung', 'Tamang', 'Thapa', 'Lama', 'Magar', 'Adhikari', 'Basnet', 'Bhattarai', 'Dahal', 'Ghimire', 'Joshi', 'KC', 'Khadka', 'Limbu', 'Maharjan', 'Pandey', 'Poudel', 'Regmi', 'Sharma', 'Subedi', 'Acharya'];
+// 52 × 42 = 2184 combinations, comfortably more than the 1600 students the seed creates — a
+// smaller pool would fill the dashboard's duplicate-name check with noise that is not a real
+// data-quality problem.
+const FIRST = ['Aarav', 'Anisha', 'Bibek', 'Binita', 'Dipesh', 'Diya', 'Kiran', 'Kritika', 'Manish', 'Nisha', 'Prabin', 'Pratima', 'Rajan', 'Rojina', 'Sagar', 'Samiksha', 'Sandesh', 'Shristi', 'Sujan', 'Sunita', 'Utsav', 'Yashoda', 'Nabin', 'Pooja', 'Rohan', 'Sneha', 'Bishal', 'Aayush', 'Priya', 'Suman', 'Anmol', 'Barsha', 'Deepak', 'Ishwor', 'Jenisha', 'Kushal', 'Milan', 'Nirajan', 'Ojaswi', 'Prasanna', 'Rabin', 'Sabin', 'Salina', 'Sudip', 'Tara', 'Ujjwal', 'Bimala', 'Hari', 'Laxmi', 'Nabina', 'Roshan', 'Sarita'];
+const LAST = ['Shrestha', 'Karki', 'Rai', 'Gurung', 'Tamang', 'Thapa', 'Lama', 'Magar', 'Adhikari', 'Basnet', 'Bhattarai', 'Dahal', 'Ghimire', 'Joshi', 'KC', 'Khadka', 'Limbu', 'Maharjan', 'Pandey', 'Poudel', 'Regmi', 'Sharma', 'Subedi', 'Acharya', 'Bhandari', 'Chaudhary', 'Dhakal', 'Gautam', 'Giri', 'Kafle', 'Koirala', 'Neupane', 'Ojha', 'Panta', 'Paudel', 'Rijal', 'Sapkota', 'Shahi', 'Sherpa', 'Silwal', 'Timalsina', 'Yadav'];
 
 const date = (y: number, m: number, d: number, h = 9) => new Date(Date.UTC(y, m - 1, d, h - 5, 15)); // ~NPT
 
@@ -122,10 +125,12 @@ async function main() {
   // Academic calendar: Autumn and Spring semesters of 14 weeks each (12 teaching + 2 exam weeks),
   // 28 weeks a year, summer break in between. Autumn starts mid-September, Spring mid-February.
   const week = 7 * 86400e3;
+  /** The teaching week is Sunday to Friday, so a semester begins on a Sunday. */
+  const sundayOnOrBefore = (d: Date) => new Date(d.getTime() - d.getUTCDay() * 86400e3);
   const semWindow = (startYear: number, n: number) => {
     const yearOffset = Math.floor((n - 1) / 2);
     const y = startYear + yearOffset;
-    const start = n % 2 === 1 ? date(y, 9, 14) : date(y + 1, 2, 16);
+    const start = sundayOnOrBefore(n % 2 === 1 ? date(y, 9, 14) : date(y + 1, 2, 16));
     const examStart = new Date(start.getTime() + 12 * week);
     const examEnd = new Date(examStart.getTime() + 2 * week);
     return { start, end: examEnd, examStart, examEnd, term: n % 2 === 1 ? ('AUTUMN' as const) : ('SPRING' as const) };

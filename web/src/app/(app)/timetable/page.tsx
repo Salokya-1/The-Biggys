@@ -56,6 +56,7 @@ interface Item {
   invigilators?: { name: string; venue: string }[];
 }
 interface Week {
+  weekStart: string;
   monday: string;
   days: { date: string; items: Item[] }[];
 }
@@ -89,7 +90,7 @@ interface NewClass {
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 /** The teaching week runs Sunday to Friday; Saturday is the weekend. */
-const TEACHING_WEEK = [{ dayOfWeek: 7, label: 'Sun', index: 6 }, { dayOfWeek: 1, label: 'Mon', index: 0 }, { dayOfWeek: 2, label: 'Tue', index: 1 }, { dayOfWeek: 3, label: 'Wed', index: 2 }, { dayOfWeek: 4, label: 'Thu', index: 3 }, { dayOfWeek: 5, label: 'Fri', index: 4 }];
+const TEACHING_WEEK = [{ dayOfWeek: 7, label: 'Sun', index: 0 }, { dayOfWeek: 1, label: 'Mon', index: 1 }, { dayOfWeek: 2, label: 'Tue', index: 2 }, { dayOfWeek: 3, label: 'Wed', index: 3 }, { dayOfWeek: 4, label: 'Thu', index: 4 }, { dayOfWeek: 5, label: 'Fri', index: 5 }];
 const KIND_LABEL: Record<string, string> = { LECTURE: 'Lecture', TUTORIAL: 'Tutorial', WORKSHOP: 'Workshop' };
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const plusDaysIso = (d: number) => new Date(Date.now() + d * 86400e3).toISOString().slice(0, 10);
@@ -253,7 +254,7 @@ export default function TimetablePage() {
         )}
         <div className="flex items-center gap-1">
           <Button variant="outline" size="icon-sm" onClick={() => setWeek(Math.max(1, effectiveWeek - 1))} aria-label="Previous week"><ChevronLeft className="h-4 w-4" /></Button>
-          <span className={cn('min-w-[9rem] text-center text-sm', isExamWeek && 'font-semibold text-brand-orange')}>{isExamWeek ? `Exam week ${effectiveWeek - (sem?.teachingWeeks ?? 12)}` : `Week ${effectiveWeek} of ${sem?.teachingWeeks ?? 12}`}{wk.data ? ` · ${wk.data.monday}` : ''}</span>
+          <span className={cn('min-w-[9rem] text-center text-sm', isExamWeek && 'font-semibold text-brand-orange')}>{isExamWeek ? `Exam week ${effectiveWeek - (sem?.teachingWeeks ?? 12)}` : `Week ${effectiveWeek} of ${sem?.teachingWeeks ?? 12}`}{wk.data ? ` · ${wk.data.weekStart}` : ''}</span>
           <Button variant="outline" size="icon-sm" onClick={() => setWeek(Math.min((sem?.teachingWeeks ?? 12) + 2, effectiveWeek + 1))} aria-label="Next week"><ChevronRight className="h-4 w-4" /></Button>
           <Button variant="ghost" size="sm" onClick={() => setWeek(0)}>Today</Button>
         </div>
