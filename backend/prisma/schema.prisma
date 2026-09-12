@@ -122,21 +122,22 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  student            Student?
-  ledModules         Module[]         @relation("ModuleLeader")
-  lecturedOfferings  ModuleOffering[] @relation("OfferingLecturer")
-  submittedSheets    MarkSheet[]      @relation("SheetSubmitter")
-  approvedSheets     MarkSheet[]      @relation("SheetApprover")
-  publishedSheets    MarkSheet[]      @relation("SheetPublisher")
-  importBatches      ImportBatch[]
-  auditLogs          AuditLog[]
-  notifications      Notification[]
-  refreshTokens      RefreshToken[]
-  taughtSlots        TimetableSlot[]  @relation("SlotTeacher")
-  coverSlots         SlotException[]  @relation("ExceptionTeacher")
-  requests           ChangeRequest[]  @relation("Requester")
-  decidedRequests    ChangeRequest[]  @relation("Decider")
-  invigilations      ExamInvigilator[]
+  student             Student?
+  ledModules          Module[]          @relation("ModuleLeader")
+  lecturedOfferings   ModuleOffering[]  @relation("OfferingLecturer")
+  coLecturedOfferings ModuleOffering[]  @relation("OfferingCoLecturer")
+  submittedSheets     MarkSheet[]       @relation("SheetSubmitter")
+  approvedSheets      MarkSheet[]       @relation("SheetApprover")
+  publishedSheets     MarkSheet[]       @relation("SheetPublisher")
+  importBatches       ImportBatch[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  refreshTokens       RefreshToken[]
+  taughtSlots         TimetableSlot[]   @relation("SlotTeacher")
+  coverSlots          SlotException[]   @relation("ExceptionTeacher")
+  requests            ChangeRequest[]   @relation("Requester")
+  decidedRequests     ChangeRequest[]   @relation("Decider")
+  invigilations       ExamInvigilator[]
 }
 
 model RefreshToken {
@@ -183,13 +184,13 @@ model Intake {
 
 /// Autumn / Spring: 12 teaching weeks then a 2-week exam window (14 weeks). Summer: retakes.
 model Semester {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   intakeId      String
   number        Int
-  term          Term     @default(AUTUMN)
+  term          Term      @default(AUTUMN)
   startDate     DateTime
   endDate       DateTime
-  teachingWeeks Int      @default(12)
+  teachingWeeks Int       @default(12)
   examStart     DateTime? // defaults to startDate + teachingWeeks
   examEnd       DateTime? // defaults to examStart + 2 weeks
 
@@ -270,14 +271,17 @@ model Module {
 }
 
 model ModuleOffering {
-  id         String  @id @default(cuid())
-  moduleId   String
-  semesterId String
-  lecturerId String?
+  id           String  @id @default(cuid())
+  moduleId     String
+  semesterId   String
+  lecturerId   String?
+  // Every module is staffed by two teachers; sections are shared between them.
+  coLecturerId String?
 
   module          Module                @relation(fields: [moduleId], references: [id])
   semester        Semester              @relation(fields: [semesterId], references: [id])
   lecturer        User?                 @relation("OfferingLecturer", fields: [lecturerId], references: [id])
+  coLecturer      User?                 @relation("OfferingCoLecturer", fields: [coLecturerId], references: [id])
   components      AssessmentComponent[]
   enrollments     Enrollment[]
   markSheets      MarkSheet[]
@@ -426,18 +430,19 @@ model ImportBatch {
 // ---------------------------------------------------------------------------
 
 model TimetableSlot {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   semesterId       String
   sectionId        String
   moduleOfferingId String
   teacherId        String
   venueId          String?
-  dayOfWeek        Int // 1 = Monday … 7 = Sunday
+  kind             ClassKind @default(LECTURE)
+  dayOfWeek        Int // 1 = Monday … 7 = Sunday (the teaching week is Sun–Fri)
   startTime        String // "09:00"
   endTime          String // "10:30"
-  weekFrom         Int      @default(1)
-  weekTo           Int      @default(12)
-  createdAt        DateTime @default(now())
+  weekFrom         Int       @default(1)
+  weekTo           Int       @default(12)
+  createdAt        DateTime  @default(now())
 
   semester       Semester        @relation(fields: [semesterId], references: [id])
   section        Section         @relation(fields: [sectionId], references: [id])
@@ -653,4 +658,11 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
+}
+
+/// Lecture, tutorial or workshop. Each year of study has its own days for each kind.
+enum ClassKind {
+  LECTURE
+  TUTORIAL
+  WORKSHOP
 }

@@ -3,18 +3,21 @@
  *
  *   npm run seed          (or: npx prisma db seed / npm run db:reset)
  *
- * Produces: 2 programmes × 3 intakes (Sep 2024, Sep 2025, Sep 2026), 16 modules,
- * 120 students, two+ semesters of published history, a semester currently in the
- * result pipeline with a sheet in every state, resits, 3 venues, 2 exam sessions,
- * deliberate data-quality issues, notifications and demo accounts.
+ * Produces: the six real Islington programmes with their London Met module lists, each intake
+ * split into 8 sections of 20 students, a faculty where every module is staffed by two teachers,
+ * semesters of published history, a semester currently in the result pipeline with a sheet in
+ * every state, resits, classrooms and exam halls, exam sessions, weekly routines that follow the
+ * lecture/tutorial/workshop day pattern, deliberate data-quality issues, notifications and demo
+ * accounts.
  * All names and numbers are invented. No real student data.
  */
 import 'dotenv/config';
-import { PrismaClient, type MarkSheetStatus, type Role } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { PrismaClient, type ClassKind, type MarkSheetStatus, type Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { computeGrade, type ComponentSpec } from '../src/lib/grading';
 import { generateSeating } from '../src/lib/seating';
-import { generateTimetable, isFinalYearSemester, periodsForSemester, type ExistingBooking } from '../src/lib/timetable';
+import { generateTimetable, isFinalYearSemester, periodsForSemester, yearOfSemester, type ExistingBooking } from '../src/lib/timetable';
 import { examSlots, generateExamSchedule } from '../src/lib/exam-schedule';
 
 const prisma = new PrismaClient();
@@ -71,6 +74,22 @@ async function main() {
     await mkUser('lecturer5@demo', 'Kabita Regmi', 'LECTURER'),
   ];
 
+  // A full teaching faculty. Every module is staffed by two of these, and one teacher takes
+  // several sections of the same module across the week — which is what the routine has to
+  // schedule around, and what makes the clash detection worth having.
+  // Two teachers per module and at most two modules per teacher — the load a real lecturer
+  // carries once you count four sections of every module they take.
+  const FACULTY_SIZE = 160;
+  // Distinct names by construction: one surname per block of first names.
+  const faculty = Array.from({ length: FACULTY_SIZE }, (_, i) => ({
+    id: randomUUID(),
+    name: `${FIRST[i % FIRST.length]} ${LAST[Math.floor(i / FIRST.length) % LAST.length]}`,
+    email: `teacher${i + 1}@demo`,
+  }));
+  await prisma.user.createMany({ data: faculty.map((f) => ({ id: f.id, email: f.email, name: f.name, role: 'LECTURER' as Role, passwordHash })) });
+  /** Everyone who can be put in front of a class. */
+  const teachingStaff = [...lecturers.map((l) => ({ id: l.id, name: l.name })), ...faculty.map((f) => ({ id: f.id, name: f.name }))];
+
   const scheme = await prisma.gradingScheme.create({
     data: {
       name: 'Default (assumed)',
@@ -111,9 +130,10 @@ async function main() {
     const examEnd = new Date(examStart.getTime() + 2 * week);
     return { start, end: examEnd, examStart, examEnd, term: n % 2 === 1 ? ('AUTUMN' as const) : ('SPRING' as const) };
   };
-  const SECTION_SIZE = 24;
-  /** Cohort size: the Sep 2026 Computing intake is a full ~240-student, 10-section cohort; the rest are one section each. */
-  const cohortSize = (code: string, label: string) => (code === 'BSCC' && label === 'Sep 2026' ? 240 : SECTION_SIZE);
+  // Every intake runs as 8 sections of 20 — the shape RTE actually timetables against.
+  const SECTION_SIZE = 20;
+  const SECTIONS_PER_INTAKE = 8;
+  const COHORT_SIZE = SECTION_SIZE * SECTIONS_PER_INTAKE;
   // intake → number of semesters that exist so far (current semester is the last one)
   const intakes = [
     { label: 'Sep 2024', year: 2024, semesters: 5, published: 4, inPipeline: null as number | null },
@@ -310,8 +330,25 @@ async function main() {
   };
 
   const leadersByYear = [leaderCS.id, leaderCS2.id, leaderBM.id];
+  // Two teachers per module, taken from the faculty in turn so the load is spread evenly.
+  let staffCursor = 0;
+  const teacherPairFor = new Map<string, [string, string]>();
+  const pairFor = (programme: string, code: string): [string, string] => {
+    const key = `${programme}:${code}`;
+    const found = teacherPairFor.get(key);
+    if (found) return found;
+    // Walk the faculty from opposite ends, so the second teacher of a module is never the first
+    // teacher of the module next to it and nobody ends up with three modules to cover.
+    const n = faculty.length;
+    const a = faculty[staffCursor % n].id;
+    const b = faculty[(staffCursor + Math.floor(n / 2)) % n].id;
+    staffCursor += 1;
+    const pair: [string, string] = [a, b];
+    teacherPairFor.set(key, pair);
+    return pair;
+  };
   /** Split a published year list across its two semesters, keeping the credit load even. */
-  const modulesByProgramme: Record<string, { code: string; title: string; credits: number; sem: number; leader: string; comps: ComponentSpec[] }[]> = Object.fromEntries(
+  const modulesByProgramme: Record<string, { code: string; title: string; credits: number; sem: number; leader: string; teachers: [string, string]; comps: ComponentSpec[] }[]> = Object.fromEntries(
     Object.entries(CATALOGUE).map(([code, years]) => [
       code,
       years.flatMap((mods, yi) => {
@@ -327,6 +364,7 @@ async function main() {
             credits: m.credits,
             sem: yi * 2 + (toFirst ? 1 : 2),
             leader: code.startsWith('BSC') ? leadersByYear[yi] : leaderBM.id,
+            teachers: pairFor(code, m.code),
             comps: m.credits >= 30 ? three() : cw60ex40(),
           };
         });
@@ -343,10 +381,10 @@ async function main() {
     FE4055: 'APPROVED', // admin publishes live
   };
   // Lecturer assignment: lecturer@demo teaches CS4003 and CS4004 for the Sep 2025 intake, and CS4001 for Sep 2026.
-  const lecturerFor = (code: string, intakeLabel: string) => {
+  const lecturerFor = (code: string, intakeLabel: string): string | null => {
     if ((code === 'CT4005' || code === 'CS4001') && intakeLabel === 'Sep 2025') return lecturer.id;
     if (code === 'CS4001' && intakeLabel === 'Sep 2026') return lecturer.id;
-    return pick(lecturers.slice(1)).id;
+    return null; // otherwise the module's own two teachers take it
   };
 
   let studentSeq = 0;
@@ -364,15 +402,15 @@ async function main() {
   const allStudents: { id: string; studentId: string; name: string; userId: string | null; programme: string; intakeLabel: string }[] = [];
   const sectionsByIntake = new Map<string, { id: string; name: string; size: number }[]>();
   const currentSemesters: { id: string; intakeId: string; start: Date; end: Date; examStart: Date; examEnd: Date; label: string }[] = [];
-  const offeringsAll: { id: string; code: string; sem: number; intakeLabel: string; programme: string; comps: { id: string; name: string; weight: number; maxMark: number; componentPassMark: number | null }[]; moduleId: string; semesterId: string; lecturerId: string }[] = [];
+  const offeringsAll: { id: string; code: string; credits: number; sem: number; intakeLabel: string; programme: string; comps: { id: string; name: string; weight: number; maxMark: number; componentPassMark: number | null }[]; moduleId: string; semesterId: string; lecturerId: string; teacherIds: string[] }[] = [];
   const auditRows: { actorId: string | null; action: string; entityType: string; entityId: string; before?: unknown; after?: unknown; reason?: string | null; createdAt: Date }[] = [];
 
   for (const p of programmes) {
     const programme = await prisma.programme.create({ data: { code: p.code, name: p.name, level: p.level } });
-    const modules = new Map<string, { id: string; sem: number; comps: ComponentSpec[] }>();
+    const modules = new Map<string, { id: string; sem: number; credits: number; teachers: [string, string]; comps: ComponentSpec[] }>();
     for (const m of modulesByProgramme[p.code]) {
       const mod = await prisma.module.create({ data: { code: m.code, title: m.title, credits: m.credits, semesterNumber: m.sem, programmeId: programme.id, moduleLeaderId: m.leader } });
-      modules.set(m.code, { id: mod.id, sem: m.sem, comps: m.comps });
+      modules.set(m.code, { id: mod.id, sem: m.sem, credits: m.credits, teachers: m.teachers, comps: m.comps });
     }
 
     for (const it of p.history ? intakes : intakes.filter((i) => i.label === 'Sep 2026')) {
@@ -389,17 +427,17 @@ async function main() {
       const cw = semWindow(it.year, current.number);
       currentSemesters.push({ id: current.id, intakeId: intake.id, start: cw.start, end: cw.end, examStart: cw.examStart, examEnd: cw.examEnd, label: `${p.code} ${it.label} S${current.number}` });
 
-      // sections of ~24 students (A, B, C …)
-      const size = cohortSize(p.code, it.label);
-      const sectionCount = Math.ceil(size / SECTION_SIZE);
-      const sections: string[] = [];
-      for (let s = 0; s < sectionCount; s++) {
-        const sec = await prisma.section.create({ data: { intakeId: intake.id, name: String.fromCharCode(65 + s) } });
-        sections.push(sec.id);
-      }
-      sectionsByIntake.set(intake.id, sections.map((id, i) => ({ id, name: String.fromCharCode(65 + i), size: Math.min(SECTION_SIZE, size - i * SECTION_SIZE) })));
+      // 8 sections of 20 (A … H)
+      const size = COHORT_SIZE;
+      const sections = Array.from({ length: SECTIONS_PER_INTAKE }, () => randomUUID());
+      await prisma.section.createMany({ data: sections.map((id, s) => ({ id, intakeId: intake.id, name: String.fromCharCode(65 + s) })) });
+      sectionsByIntake.set(intake.id, sections.map((id, i) => ({ id, name: String.fromCharCode(65 + i), size: SECTION_SIZE })));
 
+      // Students are written in bulk: 160 per intake is far too many round trips one at a time.
       const cohort: typeof allStudents = [];
+      const userRows: { id: string; email: string; name: string; role: Role; passwordHash: string }[] = [];
+      const studentRows: Record<string, unknown>[] = [];
+      const feeRows: Record<string, unknown>[] = [];
       for (let i = 0; i < size; i++) {
         studentSeq += 1;
         const name = nextName();
@@ -408,63 +446,66 @@ async function main() {
         let email = `${studentId}@student.demo`;
         if (p.code === 'BSCC' && it.label === 'Sep 2025' && demoIdx < demoStudentEmails.length) email = demoStudentEmails[demoIdx++];
         const displayName = email === 'student1@demo' ? 'Dipesh Karki' : name;
-        const user = await prisma.user.create({ data: { email, name: displayName, role: 'STUDENT', passwordHash } });
-        const s = await prisma.student.create({
-          data: {
-            studentId,
-            name: displayName,
-            email,
-            programmeId: programme.id,
-            intakeId: intake.id,
-            sectionId: sections[Math.floor(i / SECTION_SIZE)],
-            currentSemesterId: current.id,
-            userId: user.id,
-            status: 'ACTIVE',
-            specialNeedsSeating: rand() < 0.06,
-          },
+        const userId = randomUUID();
+        const sid = randomUUID();
+        userRows.push({ id: userId, email, name: displayName, role: 'STUDENT' as Role, passwordHash });
+        studentRows.push({
+          id: sid,
+          studentId,
+          name: displayName,
+          email,
+          programmeId: programme.id,
+          intakeId: intake.id,
+          sectionId: sections[i % SECTIONS_PER_INTAKE], // round-robin keeps every section exactly 20
+          currentSemesterId: current.id,
+          userId,
+          status: 'ACTIVE',
+          specialNeedsSeating: rand() < 0.06,
         });
         // semester fee for the current semester: most have paid; a few (incl. student1) have not — the admit-card demo
         const paid = email === 'student1@demo' ? false : rand() < 0.8;
-        await prisma.feeInvoice.create({
-          data: {
-            studentId: s.id,
-            semesterId: current.id,
-            amount: 85000,
-            currency: 'NPR',
-            status: paid ? 'PAID' : 'UNPAID',
-            dueDate: new Date(current.start.getTime() + 4 * week),
-            paidAt: paid ? new Date(current.start.getTime() - randInt(1, 20) * 86400e3) : null,
-            method: paid ? pick(['eSewa', 'Khalti', 'Bank transfer', 'Cash']) : null,
-            reference: paid ? `RCPT-${studentId}-${current.number}` : null,
-          },
+        feeRows.push({
+          studentId: sid,
+          semesterId: current.id,
+          amount: 85000,
+          currency: 'NPR',
+          status: paid ? 'PAID' : 'UNPAID',
+          dueDate: new Date(current.start.getTime() + 4 * week),
+          paidAt: paid ? new Date(current.start.getTime() - randInt(1, 20) * 86400e3) : null,
+          method: paid ? pick(['eSewa', 'Khalti', 'Bank transfer', 'Cash']) : null,
+          reference: paid ? `RCPT-${studentId}-${current.number}` : null,
         });
-        const rec = { id: s.id, studentId, name: displayName, userId: user.id, programme: p.code, intakeLabel: it.label };
+        const rec = { id: sid, studentId, name: displayName, userId, programme: p.code, intakeLabel: it.label };
         cohort.push(rec);
         allStudents.push(rec);
       }
+      await prisma.user.createMany({ data: userRows });
+      await prisma.student.createMany({ data: studentRows as never });
+      await prisma.feeInvoice.createMany({ data: feeRows as never });
 
       // offerings for every semester so far
       for (const sem of semesters) {
         for (const [code, m] of modules) {
           if (m.sem !== sem.number) continue;
-          const lecturerId = lecturerFor(code, it.label);
+          // The module's two teachers; a demo override can put lecturer@demo in the lead seat.
+          const override = lecturerFor(code, it.label);
+          const teacherIds = override ? [override, m.teachers.find((x) => x !== override) ?? m.teachers[1]] : [...m.teachers];
+          const lecturerId = teacherIds[0];
           const offering = await prisma.moduleOffering.create({
             data: {
               moduleId: m.id,
               semesterId: sem.id,
               lecturerId,
+              coLecturerId: teacherIds[1],
               components: { create: m.comps.map((c, i) => ({ name: c.name, weight: c.weight, maxMark: c.maxMark, componentPassMark: c.componentPassMark ?? null, sortOrder: i })) },
             },
             include: { components: { orderBy: { sortOrder: 'asc' } } },
           });
-          offeringsAll.push({ id: offering.id, code, sem: sem.number, intakeLabel: it.label, programme: p.code, comps: offering.components, moduleId: m.id, semesterId: sem.id, lecturerId });
+          offeringsAll.push({ id: offering.id, code, credits: m.credits, sem: sem.number, intakeLabel: it.label, programme: p.code, comps: offering.components, moduleId: m.id, semesterId: sem.id, lecturerId, teacherIds });
 
-          // enrol the cohort
-          const enrollments: { id: string; studentId: string; attempt: number; isResit: boolean }[] = [];
-          for (const st of cohort) {
-            const e = await prisma.enrollment.create({ data: { studentId: st.id, moduleOfferingId: offering.id, attempt: 1, isResit: false } });
-            enrollments.push({ id: e.id, studentId: st.id, attempt: 1, isResit: false });
-          }
+          // enrol the cohort (one statement — 160 students per offering)
+          const enrollments = cohort.map((st) => ({ id: randomUUID(), studentId: st.id, attempt: 1, isResit: false }));
+          await prisma.enrollment.createMany({ data: enrollments.map((e) => ({ id: e.id, studentId: e.studentId, moduleOfferingId: offering.id, attempt: 1, isResit: false })) });
 
           // decide the sheet state for this offering
           let state: MarkSheetStatus | 'EMPTY_DRAFT' | 'NONE' = 'NONE';
@@ -529,14 +570,23 @@ async function main() {
             // resits: for published sheets, RESIT outcomes get a second attempt, graded and published too
             if (state === 'PUBLISHED') {
               const resitters = results.filter((r) => r.outcome === 'RESIT');
+              const resitEnrolments: { id: string; studentId: string; moduleOfferingId: string; attempt: number; isResit: boolean }[] = [];
+              const resitMarks: { markSheetId: string; enrollmentId: string; componentId: string; rawMark: number; isAbsent: boolean }[] = [];
+              const resitResults: Record<string, unknown>[] = [];
               for (const r of resitters) {
                 const orig = enrollments.find((e) => e.id === r.enrollmentId)!;
-                const e2 = await prisma.enrollment.create({ data: { studentId: orig.studentId, moduleOfferingId: offering.id, attempt: 2, isResit: true } });
+                const e2 = randomUUID();
+                resitEnrolments.push({ id: e2, studentId: orig.studentId, moduleOfferingId: offering.id, attempt: 2, isResit: true });
                 const passesResit = rand() < 0.7;
-                const marks = specs.map((c) => ({ componentId: c.id, rawMark: Math.round(((passesResit ? gauss(52, 6) : gauss(30, 6)) / 100) * c.maxMark * 2) / 2, isAbsent: false }));
-                await prisma.mark.createMany({ data: marks.map((m) => ({ markSheetId: sheet.id, enrollmentId: e2.id, componentId: m.componentId, rawMark: clamp(m.rawMark, 0, specs.find((c) => c.id === m.componentId)!.maxMark), isAbsent: false })) });
-                const g = computeGrade({ components: specs, marks: marks.map((m) => ({ ...m, rawMark: clamp(m.rawMark, 0, specs.find((c) => c.id === m.componentId)!.maxMark) })), scheme: { passMark: 40, resitCap: 40, bands: scheme.bands as never }, attempt: 2, isResit: true });
-                await prisma.result.create({ data: { enrollmentId: e2.id, markSheetId: sheet.id, markSheetVersion: 1, overallMark: g.overallMark, grade: g.grade, outcome: g.outcome, computedAt: sheetTimes.publishedAt ?? new Date() } });
+                const marks = specs.map((c) => ({ componentId: c.id, rawMark: clamp(Math.round(((passesResit ? gauss(52, 6) : gauss(30, 6)) / 100) * c.maxMark * 2) / 2, 0, c.maxMark), isAbsent: false }));
+                resitMarks.push(...marks.map((m) => ({ markSheetId: sheet.id, enrollmentId: e2, componentId: m.componentId, rawMark: m.rawMark, isAbsent: false })));
+                const g = computeGrade({ components: specs, marks, scheme: { passMark: 40, resitCap: 40, bands: scheme.bands as never }, attempt: 2, isResit: true });
+                resitResults.push({ enrollmentId: e2, markSheetId: sheet.id, markSheetVersion: 1, overallMark: g.overallMark, grade: g.grade, outcome: g.outcome, computedAt: sheetTimes.publishedAt ?? new Date() });
+              }
+              if (resitEnrolments.length) {
+                await prisma.enrollment.createMany({ data: resitEnrolments });
+                await prisma.mark.createMany({ data: resitMarks });
+                await prisma.result.createMany({ data: resitResults as never });
               }
             }
           }
@@ -558,18 +608,30 @@ async function main() {
   }
 
   // ---------- standing from published results ----------
-  for (const st of allStudents) {
-    const results = await prisma.result.findMany({ where: { enrollment: { studentId: st.id }, markSheet: { status: 'PUBLISHED' } }, select: { outcome: true, enrollmentId: true, enrollment: { select: { moduleOfferingId: true, attempt: true } } } });
-    const latestByOffering = new Map<string, { attempt: number; outcome: string }>();
-    for (const r of results) {
-      const cur = latestByOffering.get(r.enrollment.moduleOfferingId);
-      if (!cur || r.enrollment.attempt > cur.attempt) latestByOffering.set(r.enrollment.moduleOfferingId, { attempt: r.enrollment.attempt, outcome: r.outcome });
+  {
+    // One pass over every published result, then three bulk updates — a query per student would
+    // be thousands of round trips.
+    const published = await prisma.result.findMany({
+      where: { markSheet: { status: 'PUBLISHED' } },
+      select: { outcome: true, enrollment: { select: { studentId: true, moduleOfferingId: true, attempt: true } } },
+    });
+    const latest = new Map<string, Map<string, { attempt: number; outcome: string }>>();
+    for (const r of published) {
+      const byOffering = latest.get(r.enrollment.studentId) ?? new Map<string, { attempt: number; outcome: string }>();
+      const cur = byOffering.get(r.enrollment.moduleOfferingId);
+      if (!cur || r.enrollment.attempt > cur.attempt) byOffering.set(r.enrollment.moduleOfferingId, { attempt: r.enrollment.attempt, outcome: r.outcome });
+      latest.set(r.enrollment.studentId, byOffering);
     }
-    const outcomes = [...latestByOffering.values()].map((x) => x.outcome);
-    const resits = outcomes.filter((o) => o === 'RESIT').length;
-    // Same rule as services/results.ts refreshStanding: any FAIL or 2+ modules outstanding → REVIEW.
-    const standing = outcomes.includes('FAIL') || resits >= 2 ? 'REVIEW' : resits === 1 ? 'RESIT' : 'GOOD';
-    await prisma.student.update({ where: { id: st.id }, data: { standing } });
+    const buckets: Record<string, string[]> = { GOOD: [], RESIT: [], REVIEW: [] };
+    for (const st of allStudents) {
+      const outcomes = [...(latest.get(st.id)?.values() ?? [])].map((x) => x.outcome);
+      const resits = outcomes.filter((o) => o === 'RESIT').length;
+      // Same rule as services/results.ts refreshStanding: any FAIL or 2+ modules outstanding → REVIEW.
+      buckets[outcomes.includes('FAIL') || resits >= 2 ? 'REVIEW' : resits === 1 ? 'RESIT' : 'GOOD'].push(st.id);
+    }
+    for (const [standing, ids] of Object.entries(buckets)) {
+      if (ids.length) await prisma.student.updateMany({ where: { id: { in: ids } }, data: { standing: standing as never } });
+    }
   }
 
   // ---------- deliberate data-quality issues ----------
@@ -585,10 +647,25 @@ async function main() {
   const lb101 = await prisma.venue.create({ data: { name: 'LB-101', building: 'London Block', rows: 8, cols: 10, adjacencyMode: 'ROW_AND_COLUMN', disabledSeats: [{ row: 1, col: 10 }, { row: 8, col: 1 }] } });
   const kumari = await prisma.venue.create({ data: { name: 'Kumari Hall', building: 'Main Block', rows: 12, cols: 14, adjacencyMode: 'ROW', disabledSeats: [{ row: 6, col: 7 }, { row: 6, col: 8 }, { row: 12, col: 14 }], isClassroom: false } });
   const lab3 = await prisma.venue.create({ data: { name: 'Lab 3', building: 'London Block', rows: 5, cols: 8, adjacencyMode: 'ROW_AND_COLUMN', disabledSeats: [] } });
-  // classrooms for the timetable (~30 seats each) and one more exam hall
-  for (const n of ['LB-102', 'LB-103', 'LB-201', 'LB-202', 'LB-203', 'MB-301', 'MB-302', 'MB-303']) {
-    await prisma.venue.create({ data: { name: n, building: n.startsWith('LB') ? 'London Block' : 'Main Block', rows: 5, cols: 6, adjacencyMode: 'ROW', disabledSeats: [] } });
+  // Classrooms for the timetable. 96 sections × ~13 sessions a week need real room stock, so the
+  // campus is modelled as four blocks of teaching rooms seating 25 each.
+  const blocks = [
+    { prefix: 'LB', building: 'London Block', floors: [1, 2, 3] },
+    { prefix: 'MB', building: 'Main Block', floors: [1, 2, 3] },
+    { prefix: 'NB', building: 'New Block', floors: [1, 2, 3] },
+    { prefix: 'TB', building: 'Tech Block', floors: [1, 2] },
+  ];
+  const classroomRows: { name: string; building: string; rows: number; cols: number; adjacencyMode: 'ROW'; disabledSeats: [] }[] = [];
+  for (const b of blocks) {
+    for (const floor of b.floors) {
+      for (let n = 1; n <= 6; n++) {
+        const name = `${b.prefix}-${floor}${String(n).padStart(2, '0')}`;
+        if (name === 'LB-101') continue; // already an exam room
+        classroomRows.push({ name, building: b.building, rows: 5, cols: 5, adjacencyMode: 'ROW', disabledSeats: [] });
+      }
+    }
   }
+  await prisma.venue.createMany({ data: classroomRows });
   await prisma.venue.create({ data: { name: 'Auditorium', building: 'Main Block', rows: 15, cols: 16, adjacencyMode: 'ROW', disabledSeats: [], isClassroom: false } });
 
   const sem2Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2025' && o.sem === 2);
@@ -652,15 +729,20 @@ async function main() {
       const semNumber = Number(sem.label.split('S').pop());
       const finalYear = isFinalYearSemester(semNumber);
       const r = generateTimetable(
-        secs.map((s) => ({ ...s, periods: periodsForSemester(semNumber), latestEnd: finalYear ? '10:00' : undefined })),
-        offs.map((o) => ({ id: o.id, code: o.code, teacherId: o.lecturerId })),
+        secs.map((s) => ({ ...s, periods: periodsForSemester(semNumber), latestEnd: finalYear ? '10:00' : undefined, year: yearOfSemester(semNumber) })),
+        offs.map((o) => ({ id: o.id, code: o.code, teacherId: o.lecturerId, teacherIds: o.teacherIds, credits: o.credits })),
         rooms,
         undefined,
         existing,
       );
-      await prisma.timetableSlot.createMany({ data: r.slots.map((s) => ({ semesterId: sem.id, sectionId: s.sectionId, moduleOfferingId: s.offeringId, teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, weekFrom: 1, weekTo: 12 })) });
+      await prisma.timetableSlot.createMany({ data: r.slots.map((s) => ({ semesterId: sem.id, sectionId: s.sectionId, moduleOfferingId: s.offeringId, teacherId: s.teacherId, venueId: s.venueId, kind: s.kind as ClassKind, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, weekFrom: 1, weekTo: 12 })) });
       existing.push(...r.slots.map((s) => ({ teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })));
       totalSlots += r.slots.length;
+      if (r.unplaced.length) {
+        const why = new Map<string, number>();
+        for (const u of r.unplaced) why.set(u.reason, (why.get(u.reason) ?? 0) + 1);
+        console.log(`seed:   ${sem.label}: ${r.slots.length} placed, ${r.unplaced.length} unplaced — ${[...why].map(([k, n]) => `${n}× ${k}`).join('; ')}`);
+      }
       auditRows.push({ actorId: admin.id, action: 'timetable.generate', entityType: 'Semester', entityId: sem.id, after: { slots: r.slots.length, unplaced: r.unplaced.length }, createdAt: date(2026, 9, 7, 10) });
     }
     console.log(`seed: ${totalSlots} weekly timetable slots across ${currentSemesters.length} semesters`);

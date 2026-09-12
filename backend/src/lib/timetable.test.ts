@@ -3,6 +3,10 @@ import {
   DEFAULT_MAX_GAP_MIN,
   EARLY_PERIODS,
   STANDARD_PERIODS,
+  TEACHING_DAYS,
+  daysFor,
+  sessionsFor,
+  yearOfSemester,
   breaksGapRule,
   findClashes,
   findGapViolations,
@@ -66,8 +70,9 @@ describe('generateTimetable', () => {
   });
 
   it('reports unplaced sessions with a reason when rooms are scarce', () => {
+    // one room × five periods × six teaching days = 30 places for 40 sessions
     const r = generateTimetable(sections(10), [{ id: 'o1', code: 'A', teacherId: 't1' }, { id: 'o2', code: 'B', teacherId: 't2' }], rooms(1));
-    expect(r.slots.length).toBeLessThanOrEqual(25);
+    expect(r.slots.length).toBeLessThanOrEqual(30);
     const missing = r.unplaced.reduce((n, u) => n + u.missing, 0);
     expect(missing).toBe(40 - r.slots.length);
     expect(r.unplaced[0].reason).toMatch(/room|gap|period/);
@@ -143,5 +148,53 @@ describe('calendar maths', () => {
     expect(slotDate(start, 12, 3).toISOString().slice(0, 10)).toBe('2026-12-02');
     expect(weekOf(start, new Date(Date.UTC(2026, 11, 2)), 12)).toBe(12);
     expect(weekOf(start, new Date(Date.UTC(2026, 11, 9)), 12)).toBeNull();
+  });
+});
+
+describe('class kinds and the year day pattern', () => {
+  it('gives a 15-credit module a lecture plus one applied hour, and a 30-credit module all three', () => {
+    expect(sessionsFor(15, 0)).toEqual(['LECTURE', 'TUTORIAL']);
+    expect(sessionsFor(15, 1)).toEqual(['LECTURE', 'WORKSHOP']);
+    expect(sessionsFor(30, 0)).toEqual(['LECTURE', 'TUTORIAL', 'WORKSHOP']);
+  });
+
+  it('keeps each year on its own days for each kind', () => {
+    // Sunday is 7 and Saturday is never a teaching day.
+    expect(daysFor(1, 'LECTURE')).toEqual([7, 1]);
+    expect(daysFor(2, 'LECTURE')).toEqual([2, 3]);
+    expect(daysFor(3, 'LECTURE')).toEqual([4, 5]);
+    expect(daysFor(1, 'WORKSHOP')).toEqual([4, 5]);
+    expect(daysFor(3, 'TUTORIAL')).toEqual([7, 1]);
+    expect(TEACHING_DAYS).not.toContain(6);
+  });
+
+  it('maps semesters to years', () => {
+    expect([1, 2, 3, 4, 5, 6].map(yearOfSemester)).toEqual([1, 1, 2, 2, 3, 3]);
+  });
+
+  it('places every session on its year’s days when there is room', () => {
+    const r = generateTimetable(
+      [{ id: 's1', name: 'A', size: 20, year: 2 }],
+      [{ id: 'o1', code: 'A', teacherId: 't1', credits: 30 }],
+      rooms(3),
+    );
+    expect(r.unplaced).toEqual([]);
+    const byKind = Object.fromEntries(r.slots.map((s) => [s.kind, s.dayOfWeek]));
+    expect(daysFor(2, 'LECTURE')).toContain(byKind.LECTURE);
+    expect(daysFor(2, 'TUTORIAL')).toContain(byKind.TUTORIAL);
+    expect(daysFor(2, 'WORKSHOP')).toContain(byKind.WORKSHOP);
+  });
+
+  it('shares a module’s sections between its two teachers', () => {
+    const r = generateTimetable(
+      Array.from({ length: 4 }, (_, i) => ({ id: `s${i}`, name: String.fromCharCode(65 + i), size: 20, year: 1 })),
+      [{ id: 'o1', code: 'A', teacherId: 'ta', teacherIds: ['ta', 'tb'], credits: 15 }],
+      rooms(4),
+    );
+    const perTeacher = new Map<string, Set<string>>();
+    for (const s of r.slots) perTeacher.set(s.teacherId, (perTeacher.get(s.teacherId) ?? new Set()).add(s.sectionId));
+    expect([...perTeacher.keys()].sort()).toEqual(['ta', 'tb']);
+    // two sections each, and a teacher keeps the same sections for every kind
+    expect([...perTeacher.values()].map((v) => v.size)).toEqual([2, 2]);
   });
 });
