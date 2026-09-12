@@ -235,6 +235,41 @@ export async function timetableRoutes(app: FastifyInstance) {
    * lecturer's week for one lecture. Merging them keeps every group in the timetable but books
    * the room once, which is how a cohort lecture is written on the real sheet.
    */
+  /** The other classes of the same module that could be merged into this one. */
+  app.get('/timetable/slots/:id/combinable', { preHandler: [allow('timetable.write')] }, async (req) => {
+    const { id } = parse(idParam, req.params);
+    const slot = await prisma.timetableSlot.findUnique({ where: { id }, include: { ...slotInclude, groups: { select: { id: true, name: true } } } });
+    if (!slot) throw notFound('Class not found');
+    const others = await prisma.timetableSlot.findMany({
+      where: { moduleOfferingId: slot.moduleOfferingId, kind: slot.kind, NOT: { id } },
+      include: { ...slotInclude, groups: { select: { id: true, name: true } } },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+    const groupIdsOf = (s: typeof slot) => [...new Set([s.sectionId, ...s.groups.map((g) => g.id)])];
+    const headcount = async (ids: string[]) => prisma.student.count({ where: { sectionId: { in: ids }, deletedAt: null } });
+    const rooms = await prisma.venue.findMany({ where: { isClassroom: true }, select: { id: true, name: true, building: true, rows: true, cols: true, disabledSeats: true, roomType: true } });
+    const shape = (s: typeof slot) => ({
+      id: s.id,
+      day: ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][s.dayOfWeek],
+      dayOfWeek: s.dayOfWeek,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      groups: (s.groups.length ? s.groups : [{ name: s.section.name }]).map((g) => g.name),
+      teacher: s.teacher.name,
+      venue: s.venue?.name ?? null,
+    });
+    return {
+      slot: shape(slot),
+      kind: slot.kind,
+      module: slot.moduleOffering.module,
+      currentHeadcount: await headcount(groupIdsOf(slot)),
+      candidates: await Promise.all(others.map(async (o) => ({ ...shape(o), headcount: await headcount(groupIdsOf(o)) }))),
+      rooms: rooms
+        .map((r) => ({ id: r.id, name: r.name, building: r.building, seats: r.rows * r.cols - ((r.disabledSeats as unknown[]) ?? []).length, roomType: r.roomType }))
+        .sort((a, b) => b.seats - a.seats),
+    };
+  });
+
   app.post('/timetable/slots/combine', { preHandler: [allow('timetable.write')] }, async (req) => {
     const { slotIds, venueId } = parse(z.object({ slotIds: z.array(z.string()).min(2).max(20), venueId: z.string().optional() }), req.body);
     const slots = await prisma.timetableSlot.findMany({ where: { id: { in: slotIds } }, include: { ...slotInclude, groups: { select: { id: true, name: true } } } });

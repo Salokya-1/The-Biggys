@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { MODULE_PALETTE } from '@/components/seat-grid';
 import { ReasonField } from '@/components/reason-field';
+import { CombineClasses } from '@/components/combine-classes';
 import { api, ApiError, downloadWithAuth, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -641,6 +642,7 @@ function DayView({ day, sem, teachers, venues, onClose }: { day: { date: string;
                     <Button size="xs" variant="outline" onClick={() => setAction({ kind: 'ROOM', item: it })}>Change room</Button>
                     <Button size="xs" variant="outline" onClick={() => setAction({ kind: 'RESCHEDULE', item: it })}>Reschedule</Button>
                     <Button size="xs" variant="destructive" onClick={() => setAction({ kind: 'CANCEL', item: it })}>Cancel class</Button>
+                    {it.slotId ? <CombineClasses slotId={it.slotId} onDone={onClose} /> : null}
                   </>
                 )}
                 {(user?.role === 'LECTURER' || user?.role === 'MODULE_LEADER') && it.teacher?.id === user.id && <Button size="xs" variant="outline" onClick={() => setAction({ kind: 'TEACHER_ABSENCE', item: it })}>Report absence</Button>}
