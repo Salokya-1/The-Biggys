@@ -11,7 +11,7 @@ import { capacityOf, findViolations, generateOrderedSeating, generateSeating, ty
 import { notifyUsers } from '../lib/notify';
 import { renderSeatingPdf } from '../services/seating-pdf';
 import { scheduleSemesterExams } from '../services/exams';
-import { teacherConflicts } from '../services/calendar';
+import { parseDay, teacherConflicts } from '../services/calendar';
 import { fromMinutes, overlaps, toMinutes } from '../lib/timetable';
 
 const addMinutes = (t: string, min: number) => fromMinutes(toMinutes(t) + min);
@@ -364,6 +364,54 @@ export async function examRoutes(app: FastifyInstance) {
    * "Capacity is insufficient" is a complaint. What RTE needs is the list of rooms it could add
    * and how many seats each one buys, so the answer is one or two clicks rather than a hunt.
    */
+  /**
+   * Who is actually free to invigilate a sitting.
+   *
+   * Picking an invigilator from the whole staff list means most choices are wrong: they are
+   * teaching, they are already invigilating, or they teach the very module being examined. This
+   * answers the only question that matters — who can stand in that room at that time.
+   */
+  app.get('/exams/free-invigilators', { preHandler: [allow('seating.read')] }, async (req) => {
+    const q = parse(
+      z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/),
+        durationMin: z.coerce.number().int().min(15).max(480).default(120),
+        offeringIds: z.string().optional(), // comma separated
+        excludeExamId: z.string().optional(),
+      }),
+      req.query,
+    );
+    const date = parseDay(q.date);
+    const endTime = addMinutes(q.startTime, q.durationMin);
+    const offeringIds = (q.offeringIds ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
+    const [staff, classes, exams, offerings] = await Promise.all([
+      prisma.user.findMany({ where: { role: { in: ['LECTURER', 'MODULE_LEADER'] }, isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+      prisma.timetableSlot.findMany({ where: { dayOfWeek: isoDow(date) }, select: { teacherId: true, startTime: true, endTime: true } }),
+      prisma.examSession.findMany({
+        where: { date, ...(q.excludeExamId ? { NOT: { id: q.excludeExamId } } : {}) },
+        select: { startTime: true, durationMin: true, invigilators: { select: { userId: true } } },
+      }),
+      offeringIds.length ? prisma.moduleOffering.findMany({ where: { id: { in: offeringIds } }, select: { lecturerId: true, coLecturerId: true, module: { select: { moduleLeaderId: true } } } }) : Promise.resolve([]),
+    ]);
+
+    const teachingNow = new Set(classes.filter((c) => overlaps(c.startTime, c.endTime, q.startTime, endTime)).map((c) => c.teacherId));
+    const invigilatingNow = new Set(
+      exams.flatMap((e) => (overlaps(e.startTime, addMinutes(e.startTime, e.durationMin), q.startTime, endTime) ? e.invigilators.map((i) => i.userId) : [])),
+    );
+    // Nobody invigilates their own module: that is the whole point of an invigilator.
+    const ownsTheModule = new Set(offerings.flatMap((o) => [o.lecturerId, o.coLecturerId, o.module.moduleLeaderId].filter((x): x is string => Boolean(x))));
+
+    const why = (id: string) => (teachingNow.has(id) ? 'teaching then' : invigilatingNow.has(id) ? 'invigilating another exam' : ownsTheModule.has(id) ? 'teaches this module' : null);
+    const rows = staff.map((s) => ({ ...s, busyBecause: why(s.id) }));
+    return {
+      window: { date: q.date, startTime: q.startTime, endTime },
+      free: rows.filter((r) => !r.busyBecause).map(({ id, name }) => ({ id, name })),
+      busy: rows.filter((r) => r.busyBecause),
+    };
+  });
+
   /** Everything that happens in one room in a normal week, plus the exams booked into it. */
   app.get('/venues/:id/classes', { preHandler: [allow('seating.read')] }, async (req) => {
     const { id } = parse(idParam, req.params);

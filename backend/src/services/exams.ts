@@ -34,7 +34,29 @@ export async function scheduleSemesterExams(semesterId: string, opts: { actorId:
 
   const created: string[] = [];
   await prisma.$transaction(async (tx) => {
-    if (opts.replace) await tx.examSession.deleteMany({ where: { semesterId, kind: 'FINAL' } });
+    if (opts.replace && semester.examSessions.length) {
+      // Take the old sessions apart before deleting them. Relying on the database to cascade is
+      // fragile — a camera request or a seat allocation left pointing at a session fails the
+      // delete with a foreign-key error and the whole regeneration is lost.
+      const oldIds = semester.examSessions.map((e) => e.id);
+      await tx.cameraAccessRequest.updateMany({ where: { examSessionId: { in: oldIds } }, data: { examSessionId: null } });
+      await tx.seatAllocation.deleteMany({ where: { examSessionId: { in: oldIds } } });
+      await tx.examInvigilator.deleteMany({ where: { examSessionId: { in: oldIds } } });
+      // Implicit many-to-many rows go with an explicit disconnect, one session at a time.
+      for (const id of oldIds) {
+        const s = await tx.examSession.findUnique({ where: { id }, select: { offerings: { select: { id: true } }, venues: { select: { id: true } }, sections: { select: { id: true } } } });
+        if (!s) continue;
+        await tx.examSession.update({
+          where: { id },
+          data: {
+            offerings: { disconnect: s.offerings.map((x) => ({ id: x.id })) },
+            venues: { disconnect: s.venues.map((x) => ({ id: x.id })) },
+            sections: { disconnect: s.sections.map((x) => ({ id: x.id })) },
+          },
+        });
+      }
+      await tx.examSession.deleteMany({ where: { id: { in: oldIds } } });
+    }
     for (const s of result.sessions) {
       const off = semester.offerings.find((o) => o.id === s.offeringIds[0])!;
       const session = await tx.examSession.create({

@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { api, ApiError } from '@/lib/api';
+import { ApiError, api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import type { ExamSessionListItem, Venue } from '@/lib/types';
@@ -103,6 +103,14 @@ export default function ExamsPage() {
   });
 
   // 74 offerings and 52 rooms is too many to hunt through by eye.
+  // Only offer people who can really stand in the room: not teaching, not already invigilating,
+  // and not the ones who teach the module being examined.
+  const freeQuery = qs({ date: form.date, startTime: form.startTime, durationMin: form.durationMin, offeringIds: form.offeringIds.join(',') || undefined });
+  const freeInvigilators = useQuery({
+    queryKey: ['free-invigilators', freeQuery],
+    queryFn: () => api<{ free: { id: string; name: string }[]; busy: { id: string; name: string; busyBecause: string }[] }>(`/api/exams/free-invigilators${freeQuery}`),
+    enabled: !!form.date && !!form.startTime,
+  });
   const [moduleQuery, setModuleQuery] = useState('');
   const [venueQuery, setVenueQuery] = useState('');
   const matches = (needle: string, ...hay: (string | number | undefined)[]) =>
@@ -207,6 +215,7 @@ export default function ExamsPage() {
                 <Label>Venues and invigilators</Label>
                 <span className="text-xs text-muted-foreground">
                   {form.venueIds.length} selected · {(venues.data ?? []).filter((v) => form.venueIds.includes(v.id)).reduce((n, v) => n + v.capacity, 0)} seats
+                  {freeInvigilators.data ? ` · ${freeInvigilators.data.free.length} staff free at that time` : ''}
                 </span>
               </div>
               <Input value={venueQuery} onChange={(e) => setVenueQuery(e.target.value)} placeholder="Search a room by name or block" className="h-8" />
@@ -216,12 +225,23 @@ export default function ExamsPage() {
                   .map((v) => (
                   <div key={v.id} className="flex flex-wrap items-center gap-2">
                     <label className="flex flex-1 items-center gap-2"><Checkbox checked={form.venueIds.includes(v.id)} onCheckedChange={(c) => toggle('venueIds', v.id, !!c)} /><span>{v.name} ({v.building}) — capacity {v.capacity}{v.isClassroom ? '' : ' · exam hall'}</span></label>
-                    {form.venueIds.includes(v.id) && (
-                      <Select value={form.invigilators[v.id] ?? ''} onValueChange={(u) => setForm({ ...form, invigilators: { ...form.invigilators, [v.id]: u ?? '' } })} items={Object.fromEntries((teachers.data ?? []).map((t) => [t.id, t.name]))}>
-                        <SelectTrigger className="w-48"><SelectValue placeholder={isAdmin ? 'Invigilator' : 'Invigilator (you by default)'} /></SelectTrigger>
-                        <SelectContent>{teachers.data?.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
-                      </Select>
-                    )}
+                    {form.venueIds.includes(v.id) && (() => {
+                      const free = freeInvigilators.data?.free ?? teachers.data ?? [];
+                      const picked = form.invigilators[v.id];
+                      // Anyone already chosen stays in the list even if they are busy, so a
+                      // deliberate choice is never silently dropped.
+                      const options = picked && !free.some((f) => f.id === picked)
+                        ? [...free, ...(teachers.data ?? []).filter((x) => x.id === picked)]
+                        : free;
+                      return (
+                        <Select value={picked ?? ''} onValueChange={(u) => setForm({ ...form, invigilators: { ...form.invigilators, [v.id]: u ?? '' } })} items={Object.fromEntries(options.map((o) => [o.id, o.name]))}>
+                          <SelectTrigger className="w-56">
+                            <SelectValue placeholder={form.date ? `Free invigilator (${free.length})` : 'Pick a date first'} />
+                          </SelectTrigger>
+                          <SelectContent>{options.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>

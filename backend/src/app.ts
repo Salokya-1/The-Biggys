@@ -74,8 +74,13 @@ export async function buildApp() {
         message = 'Record not found';
       } else if (err.code === 'P2003') {
         status = 409;
-        message = 'Operation violates a relationship constraint';
-        details = { field: err.meta?.field_name };
+        // Name the constraint. "Violates a relationship constraint" tells nobody anything; the
+        // usual cause is a stale page pointing at a record that has since been replaced.
+        const field = String(err.meta?.field_name ?? '');
+        message = field
+          ? `That refers to something that no longer exists (${field}). Reload the page and try again.`
+          : 'That refers to something that no longer exists. Reload the page and try again.';
+        details = { field };
       }
     }
     if (status >= 500) req.log.error({ err }, 'unhandled error');
