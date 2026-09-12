@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { api, qs } from '@/lib/api';
+import { ApiError, api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import type { TeacherOverview } from '@/lib/types';
@@ -37,18 +37,38 @@ export default function TeachersPage() {
 
   const list = useQuery({ queryKey: ['teachers-overview', q], queryFn: () => api<TeacherOverview[]>(`/api/teachers/overview${qs({ q: q || undefined })}`) });
 
+  /**
+   * Classes the window would take the teacher out of, held back until somebody says go ahead.
+   *
+   * The API refuses the first attempt and answers with the list; confirming sends it again, and
+   * then cover is assigned and the students in those rooms are told.
+   */
+  const [handover, setHandover] = useState<{ message: string; classes: { id: string; what: string; cover: string | null }[] } | null>(null);
+
   const addBlock = useMutation({
-    mutationFn: (b: NonNullable<typeof block>) =>
-      api<{ affectedClasses: string[] }>(`/api/teachers/${b.teacherId}/unavailability`, { method: 'POST', body: { dayOfWeek: b.dayOfWeek, startTime: b.startTime, endTime: b.endTime, reason: b.reason || undefined } }),
+    mutationFn: (b: NonNullable<typeof block> & { confirm?: boolean }) =>
+      api<{ affectedClasses: string[]; handovers?: { what: string; cover: string | null }[] }>(`/api/teachers/${b.teacherId}/unavailability`, {
+        method: 'POST',
+        body: { dayOfWeek: b.dayOfWeek, startTime: b.startTime, endTime: b.endTime, reason: b.reason || undefined, confirm: b.confirm },
+      }),
     onSuccess: (r) => {
       setBlock(null);
+      setHandover(null);
       qc.invalidateQueries({ queryKey: ['teachers-overview'] });
+      const handed = r.handovers ?? [];
+      const covered = handed.filter((h) => h.cover);
       toast.success('Unavailable hours recorded', {
-        description: r.affectedClasses.length ? `${r.affectedClasses.length} class(es) already sit in that window: ${r.affectedClasses.join(', ')}. Regenerate or move them.` : 'The generator will work around it.',
-        duration: r.affectedClasses.length ? 10000 : 4000,
+        description: handed.length
+          ? `${covered.length} of ${handed.length} class(es) handed over${covered.length ? ` to ${[...new Set(covered.map((h) => h.cover))].join(', ')}` : ''}. Students have been told.`
+          : 'The generator will work around it.',
+        duration: handed.length ? 10000 : 4000,
       });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      const details = e instanceof ApiError ? (e.details as { needsConfirmation?: boolean; classes?: { id: string; what: string; cover: string | null }[] } | undefined) : undefined;
+      if (details?.needsConfirmation && details.classes) setHandover({ message: e.message, classes: details.classes });
+      else toast.error(e.message);
+    },
   });
 
   const removeBlock = useMutation({
@@ -204,11 +224,35 @@ export default function TeachersPage() {
         </CardContent>
       </Card>
 
+      <Dialog open={!!handover} onOpenChange={(o) => !o && setHandover(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Hand these classes over?</DialogTitle>
+            <DialogDescription>{handover?.message}</DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-1 text-sm">
+            {(handover?.classes ?? []).map((c) => (
+              <li key={c.id} className="min-w-0 border p-2">
+                <span className="block break-words font-medium">{c.what}</span>
+                <span className="text-xs text-muted-foreground">{c.cover ? `${c.cover} can take it` : 'Nobody on the module is free — RTE will be asked to place it'}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">The students in those rooms are told the lecturer has changed. Time and room stay as they are.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHandover(null)}>Cancel</Button>
+            <Button disabled={addBlock.isPending} onClick={() => block && addBlock.mutate({ ...block, confirm: true })}>
+              {addBlock.isPending ? 'Blocking…' : 'Block and hand over'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!block} onOpenChange={(o) => !o && setBlock(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Hours {block?.name} cannot teach</DialogTitle>
-            <DialogDescription>The generator will not place a class in this window. Existing classes are not moved, but you will be told which ones now sit inside it.</DialogDescription>
+            <DialogDescription>The generator will not place a class in this window. If they are already teaching inside it, you will be asked before anything is handed over.</DialogDescription>
           </DialogHeader>
           {block && (
             <div className="space-y-3">

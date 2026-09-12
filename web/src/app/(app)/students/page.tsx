@@ -11,6 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { StandingBadge, StatusBadge } from '@/components/status-badges';
+import { useAuth } from '@/lib/auth';
+import { NewStudent } from '@/components/new-student';
 import { api, qs } from '@/lib/api';
 import type { Paged, Programme, StudentSummary } from '@/lib/types';
 
@@ -57,6 +59,7 @@ export default function StudentsPage() {
   const standingItems = { all: 'Any standing', ...Object.fromEntries(STANDINGS.map((s) => [s, s])) };
 
   const query = qs({ q: debounced, programmeId, intakeId, status, standing, semesterNumber, page, pageSize });
+  const { can } = useAuth();
   const students = useQuery({
     queryKey: ['students', query],
     queryFn: () => api<Paged<StudentSummary>>(`/api/students${query}`),
@@ -65,9 +68,12 @@ export default function StudentsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Student directory</h1>
-        <p className="text-sm text-muted-foreground">Search and filter the central student record. Click a row for the full academic profile.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight">Student directory</h1>
+          <p className="text-sm text-muted-foreground">Search and filter the central student record. Click a row for the full academic profile.</p>
+        </div>
+        {can('student.write') && <NewStudent />}
       </div>
 
       <div className="grid gap-2 md:grid-cols-6">
