@@ -24,11 +24,12 @@ async function ownStudent(userId: string) {
 export async function feeRoutes(app: FastifyInstance) {
   // ---------- admin ----------
   app.get('/fees', { preHandler: [allow('fees.read')] }, async (req) => {
-    const q = parse(z.object({ semesterId: z.string().optional(), status: z.enum(['UNPAID', 'PAID', 'WAIVED']).optional(), q: z.string().optional() }), req.query);
+    const q = parse(z.object({ semesterId: z.string().optional(), status: z.enum(['UNPAID', 'PAID', 'WAIVED']).optional(), q: z.string().optional(), studentId: z.string().optional() }), req.query);
     const items = await prisma.feeInvoice.findMany({
       where: {
         ...(q.semesterId ? { semesterId: q.semesterId } : {}),
         ...(q.status ? { status: q.status } : {}),
+        ...(q.studentId ? { studentId: q.studentId } : {}),
         ...(q.q ? { student: { OR: [{ studentId: { contains: q.q, mode: 'insensitive' } }, { name: { contains: q.q, mode: 'insensitive' } }] } } : {}),
       },
       include: feeInclude,

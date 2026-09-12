@@ -3,6 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AttendanceCard } from '@/components/attendance-card';
 import { Transcript } from '@/components/transcript';
+import { EnrolmentHistory } from '@/components/enrolment-history';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { OutcomeBadge, SheetStatusBadge, StandingBadge, StatusBadge } from '@/components/status-badges';
@@ -49,6 +50,8 @@ export function StudentProfileView({ profile, forStudent }: { profile: StudentPr
       </div>
 
       <Transcript profile={profile} />
+
+      <EnrolmentHistory profile={profile} />
 
       <AttendanceCard studentId={s.id} />
 
