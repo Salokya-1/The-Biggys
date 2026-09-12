@@ -206,6 +206,8 @@ export default function TimetablePage() {
   /** The slot id travels in the drag payload, so a drop works even before React re-renders. */
   const DRAG_TYPE = 'application/x-rte-slot';
   const allItems = useMemo(() => (wk.data?.days ?? []).flatMap((d) => d.items), [wk.data]);
+  const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const clock = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   const onDrop = (e: React.DragEvent, dayIndex: number, p: { startTime: string; endTime: string }) => {
     e.preventDefault();
     const slotId = e.dataTransfer.getData(DRAG_TYPE) || dragging?.slotId;
@@ -215,7 +217,10 @@ export default function TimetablePage() {
     const item = allItems.find((i) => i.slotId === slotId);
     if (!item) return;
     if (item.startTime === p.startTime && item.date === weekdays[dayIndex]?.date) return;
-    move.mutate({ item, dayOfWeek: weekdays[dayIndex].dayOfWeek, startTime: p.startTime, endTime: p.endTime });
+    // A class keeps its own length when it moves: a two-hour workshop dropped on an hourly row is
+    // still a two-hour workshop, not a shortened one.
+    const endTime = clock(mins(p.startTime) + (mins(item.endTime) - mins(item.startTime)));
+    move.mutate({ item, dayOfWeek: weekdays[dayIndex].dayOfWeek, startTime: p.startTime, endTime });
   };
 
   return (
