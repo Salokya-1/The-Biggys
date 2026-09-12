@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Armchair, BookOpen, Building2, CalendarDays, CalendarClock, ClipboardCheck, GraduationCap, Inbox, LayoutDashboard, LogOut, Receipt, ShieldCheck, Sun, FileSpreadsheet, TriangleAlert, Users, Video } from 'lucide-react';
+import { Armchair, BookOpen, Building2, CalendarClock, CalendarDays, ClipboardCheck, FileSpreadsheet, GraduationCap, Inbox, LayoutDashboard, LogOut, Megaphone, MessageCircleQuestion, MessageSquare, Receipt, ShieldCheck, Sun, TriangleAlert, UserCheck, Users, Video } from 'lucide-react';
 import { Assistant } from '@/components/assistant';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +33,10 @@ const NAV: NavItem[] = [
   { href: '/exams', label: 'Exams', icon: CalendarDays, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/requests', label: 'Requests', icon: Inbox, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/alerts', label: 'Class alerts', icon: TriangleAlert, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'timetable.read' },
+  { href: '/announcements', label: 'Announcements', icon: Megaphone, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'timetable.read' },
+  { href: '/attendance', label: 'Attendance', icon: UserCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'attendance.read' },
+  { href: '/messages', label: 'Messages', icon: MessageSquare, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'], needs: 'message.use' },
+  { href: '/queries', label: 'Queries', icon: MessageCircleQuestion, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'], needs: 'query.raise' },
   { href: '/teachers', label: 'Teachers', icon: GraduationCap, roles: ['ADMIN', 'MODULE_LEADER'], needs: 'timetable.read' },
   { href: '/venues', label: 'Rooms', icon: Building2, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'seating.read' },
   { href: '/camera', label: 'Camera access', icon: Video, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'camera.read' },
