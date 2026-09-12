@@ -34,12 +34,17 @@ const FEE_TONE: Record<Invoice['status'], string> = {
  * actually asked at the counter — which semester is this person in, when does it end, have they
  * ever taken this module before, and is their fee settled — so those live here in one place.
  */
-export function EnrolmentHistory({ profile }: { profile: StudentProfile }) {
+export function EnrolmentHistory({ profile, forStudent }: { profile: StudentProfile; forStudent?: boolean }) {
   const s = profile.student;
 
+  // A student reads their own invoices through their own endpoint; the ledger route is staff-only
+  // and asking for it from a student account would fail for a reason that is not a fault.
   const fees = useQuery({
-    queryKey: ['student-fees', s.id],
-    queryFn: () => api<{ items: Invoice[] }>(`/api/fees?studentId=${s.id}`).then((r) => r.items),
+    queryKey: ['student-fees', s.id, forStudent],
+    queryFn: () =>
+      forStudent
+        ? api<{ invoices: Invoice[] }>('/api/fees/me').then((r) => r.invoices)
+        : api<{ items: Invoice[] }>(`/api/fees?studentId=${s.id}`).then((r) => r.items),
     retry: false,
   });
 

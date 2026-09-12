@@ -51,7 +51,7 @@ export function StudentProfileView({ profile, forStudent }: { profile: StudentPr
 
       <Transcript profile={profile} />
 
-      <EnrolmentHistory profile={profile} />
+      <EnrolmentHistory profile={profile} forStudent={forStudent} />
 
       <AttendanceCard studentId={s.id} />
 
