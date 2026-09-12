@@ -16,6 +16,20 @@ Have `docs/sample-marks-CS4003.csv` ready. Phone signed in as `student1@demo` on
 | 3:30 | admin@demo | Seating sheets + door lists (PDF) → open | "— per-venue sheet and door list with signature column. What RTE prints today, generated in one click." |
 | 3:50 | — | Dashboard → Data quality | "And it tells leadership what the spreadsheets were hiding: a published module with a missing result, students with no semester, an intake on the wrong programme." |
 
+## Extended demo (v2, +3 minutes)
+
+| Who | Do | Say |
+|---|---|---|
+| admin@demo | Timetable → BSc Computing Sep 2026 → week view | "240 students in 10 sections, two modules, one teacher each — 40 clash-free classes a week, generated in under a second, repeated for 12 weeks." |
+| admin@demo | Click a day → Change teacher on a class → pick someone busy | "Rejected with the exact clash. Pick a free colleague — applied, everyone in the section notified." |
+| lecturer@demo | Timetable → day → Report absence | "The request lands in RTE's inbox." |
+| admin@demo | Requests → Approve with cover teacher | "Cover is checked for clashes, the class is updated, students told." |
+| admin@demo | Exams → Generate semester schedule | "Two-week window, one exam per day per cohort, halls packed, invigilators who don't teach the module. This also runs by itself three weeks before the window." |
+| lecturer@demo | Exams → New class test, sections A+B, seating by ID | "Teachers set their own tests; seating follows student IDs in ascending order per room." |
+| student1@demo | Fees → Pay → Issue admit card → PDF | "No fee, no admit card — the gate is in the API." |
+| admin@demo | Retakes → Generate summer retakes | "Everyone with an outstanding resit gets a summer offering and a resit exam." |
+| any | Assistant (Ctrl+K): "Cancel section A's Programming class tomorrow, room repairs" | "The model acts through the same API with my permissions; the change shows in the audit log." |
+
 ## Judge Q&A — answer by showing
 
 1. **Can a lecturer change a published mark?** No. Open the published sheet: grid read-only, no submit action. Then `curl -X PUT …/marks` → 409 "Marks can only be edited while the sheet is DRAFT". Even a raw `UPDATE "Mark"` fails: trigger `mark_published_immutable`. Corrections = *Request correction* (reason) → new version → students notified "result updated".

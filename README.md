@@ -26,6 +26,11 @@ RTE keeps student records, marks, workloads and exam operations in isolated spre
 | **Student record** | Programmes → intakes → semesters; modules and offerings with weighted assessment components; enrolments with attempts/resits; searchable directory (ID/name/email, programme, intake, semester, status, standing; server-side pagination); full academic profile per student |
 | **Result pipeline** | Marks grid with live grade preview · CSV/XLSX import with preview/commit and downloadable template · pure grade calculator (weights, resit cap, component minimums, deferral) · state machine DRAFT → SUBMITTED → UNDER REVIEW → APPROVED → PUBLISHED with mandatory reasons for reject/correction · scheduled/embargoed publication · versioned corrections with student notice · optimistic locking (409 on conflict) · explainable statistical flags · Excel export · append-only audit log |
 | **Exam seating** | Venues with row×col grids, unavailable seats, left/right or left/right+front/back separation · deterministic engine (capacity, adjacency, special-needs priority, multi-venue partition, unseated list, violation report) · grid visualisation · seat lookup by ID · PDF seating sheets + door lists · student seat view |
+| **Academic calendar & timetable** | Autumn/Spring semesters of 14 weeks (12 teaching + 2 exam), summer break · sections of 22–25 students per intake · one constant weekly routine per section generated for all sections with teacher, section and room clash detection (a teacher can teach every section of a module) · calendar UI with week overview and day view · RTE sees everything, teachers their classes, students only their own section · one-day changes (cover teacher, room move, cancel, reschedule) with clash checks and notifications · absence requests from teachers and students, section-change requests, approvals with cover assignment |
+| **Exam scheduling** | Whole-semester exam timetable generated inside the exam window — automatically three weeks before it starts, or on demand — one exam per module, one exam per day per cohort, venues packed largest-first, an invigilator per venue who does not teach the module · teachers create their own class tests with sections and invigilators; invigilator clashes with classes or other exams are rejected · seating either anti-cheat mixed or **by section in ascending student-ID order** |
+| **Fees & admit cards** | Semester fee invoices per student · demo payment gateway (eSewa / Khalti / bank) · admit card issued only when the fee is paid, as a PDF listing the student's exams, venues and seats |
+| **Summer retakes** | Students with outstanding resits are enrolled on a summer semester per intake with retake offerings and resit exams scheduled automatically |
+| **AI assistant** | OpenRouter model (free NVIDIA Nemotron with fallbacks) with 40+ function tools that call this API **as the signed-in user** — it can search, create and update students, enrol, save marks, move mark sheets, generate seating, timetables and exam schedules, handle requests, fees and admit cards; RBAC, validation, audit and notifications apply unchanged; irreversible actions are confirmed first |
 | **Dashboard** | Result-processing funnel with overdue items, publication status with missing marks, import error rate, exam readiness & venue utilisation, pass rate vs previous offering, resit volume, at-risk students, data-quality issues, faculty teaching load, live system-status widget |
 | **Android app (Flutter)** | Login, Home, My results, My exam seats (mini grid), Notifications, Profile; staff approval queue with approve / return / publish; secure token storage; offline cache with "last synced"; cold-start handling; runtime API URL switch |
 | **Data integrity** | Unique constraints, CHECK constraints, triggers: marks within component max, published marks immutable, results immutable, audit log append-only; soft deletes |
@@ -53,6 +58,8 @@ cd ../web && cp .env.example .env.local && npm install
 npm run dev                                # web on http://localhost:3000
 ```
 
+Assistant: put an OpenRouter key in `backend/.env` as `OPENROUTER_API_KEY` (free tier works; leave empty to disable).
+
 Mobile: `cd mobile && flutter pub get && flutter run` (emulator reaches the API at `http://10.0.2.2:8080`; change it in the app's Settings for a physical phone).
 
 ## Deployed URLs
@@ -73,7 +80,8 @@ All passwords: `Demo1234!` — seeded, fictional data.
 | RTE admin | `admin@demo` | everything; publishes results; generates seating |
 | Module leader | `leader@demo` | modules CS4001–CS4004; review queue (CS4004 is waiting) |
 | Lecturer | `lecturer@demo` | CS4003 (empty DRAFT — import the CSV in `docs/`) and CS4004 |
-| Student | `student1@demo` … `student5@demo` | own results and exam seats (student1 = Dipesh Karki) |
+| Student | `student1@demo` … `student5@demo` | own results, timetable, exam seats, fees (student1 = Dipesh Karki, fee unpaid for the admit-card demo) |
+| Student (2026 intake) | `26010001@student.demo` | BSc Computing Sep 2026, section A — 240-student, 10-section cohort with a generated routine |
 
 ## Tests
 
@@ -91,6 +99,8 @@ CI runs migrate → seed → typecheck → tests → build for the API and lint 
 - Standing: any FAIL or two outstanding resits → REVIEW; one → RESIT.
 - Maximum three attempts per module.
 - Adjacency rule: same-module students not left/right (and optionally front/back) when modules share a venue.
+- Calendar: 12 teaching weeks then a 2-week exam window; exams Mon–Fri at 09:00 and 13:00; class periods 08:00–17:15 in 90-minute blocks; the exam schedule is generated 3 weeks before the window.
+- Fees: one invoice per student per semester (NPR 85,000 in the seed); the payment gateway is a stub.
 
 ## AI Tools Disclosure
 

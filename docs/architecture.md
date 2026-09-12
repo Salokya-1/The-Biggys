@@ -181,3 +181,26 @@ Outputs: colour-coded grid (web), per-venue seating sheet + door list PDF (pdfki
 | Seating prefers seating everyone over perfect separation | An exam with an unseated student is a bigger failure than one adjacency clash | Clashes are reported, not eliminated, when a module is larger than half a venue |
 | Standing rule is simple (any fail / two resits → review) | Configurable later; today it feeds the at-risk tile honestly | Not the real progression regulations |
 | Bearer tokens in web `localStorage` | Cross-origin API (Vercel ↔ Antideploy) without cookie/CSRF complexity in 24 h | XSS would expose tokens; mitigated by short access-token life and refresh rotation |
+
+## v2 — calendar, scheduling, fees, assistant
+
+### Academic calendar
+`Semester` carries `term` (AUTUMN / SPRING / SUMMER), `teachingWeeks` (12) and `examStart` / `examEnd` (the 2-week window). Autumn starts mid-September, Spring mid-February; summer holds retakes. Sections (`Section`, ~24 students) belong to an intake; students carry `sectionId`.
+
+### Timetable
+`generateTimetable(sections, offerings, rooms, periods, existing)` (`lib/timetable.ts`) is greedy and deterministic: for every section × module it needs `sessionsPerWeek` periods, picks a period where the section, the module's teacher and a big-enough room are all free (and, in a first pass, on distinct days), and pre-books teachers/rooms already used by other semesters running in the same weeks. `findClashes` is the single validator used by generation, manual edits and cover assignment. The weekly `TimetableSlot` rows repeat for the teaching weeks; `SlotException` rows (unique per slot + date) override one occurrence (cancel, cover teacher, room move, reschedule). `services/calendar.ts` turns a date into concrete items by resolving the week number, applying exceptions and adding exam sessions — the same builder serves the day view, the week view, teacher availability and room availability checks.
+
+### Requests
+`ChangeRequest` (teacher absence, student absence, section swap) → approval by RTE/leader applies the effect inside one transaction: a `SlotException` (cover teacher after a clash check, else cancellation) or a section move, plus notifications to everyone affected and audit rows.
+
+### Exam scheduling
+`generateExamSchedule` (`lib/exam-schedule.ts`) walks the window's weekday slots (09:00, 13:00): each offering gets one slot where no other exam of the same semester sits (first pass also insists on a different day), venues are packed largest-first until capacity covers the candidates, and each venue receives the least-loaded free teacher who does not teach that module. `services/exams.ts` persists sessions with `ExamInvigilator` rows and notifies invigilators and students; `autoScheduleDueExams` runs at start-up and every 6 h for semesters whose window begins within 21 days. Class tests use the same session model with `kind = CLASS_TEST`, optional sections, and `seatingMode = BY_ID`, which seats each section in ascending student-ID order (`generateOrderedSeating`). Invigilator clashes (a class or another exam at that time) are rejected with details.
+
+### Fees and admit cards
+`FeeInvoice` per student per semester; `POST /fees/:id/pay` is a stub gateway that records method and reference. `AdmitCard` can only be issued against a PAID/WAIVED invoice; the PDF lists the semester's exams with the student's seat once seating exists.
+
+### Retakes
+For an academic year, the latest published outcome per student × offering that is RESIT (and under three attempts) is grouped by intake and module; a SUMMER semester is created per intake, retake offerings copy the components and lecturer, enrolments carry `attempt + 1, isResit`, and resit exams are scheduled in the summer window.
+
+### AI assistant
+`routes/assistant.ts` runs an OpenAI-style tool loop against OpenRouter (primary model + fallbacks, retries on 429/5xx). Every tool is an HTTP call into this same Fastify app via `app.inject`, carrying the caller's bearer token — so the assistant has exactly the user's permissions, every action passes the same Zod validation, RBAC, optimistic locks, audit and notifications, and a 403 simply comes back to the model. Large tool outputs are shaped to the essentials. The system prompt requires confirmation before irreversible or replacing actions unless the user asked for that exact action. Tool calls are written to the audit log as `assistant.actions`.

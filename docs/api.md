@@ -87,3 +87,50 @@ Roles: `ADMIN` (RTE), `MODULE_LEADER`, `LECTURER`, `STUDENT`. Lecturers see only
 curl -s -X POST $API/auth/login -H 'content-type: application/json' -d '{"email":"student1@demo","password":"Demo1234!"}' | jq -r .accessToken > /tmp/t
 curl -s -o /dev/null -w '%{http_code}\n' $API/api/students -H "authorization: Bearer $(cat /tmp/t)"   # 403
 ```
+
+## Timetable & calendar
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/timetable/semesters` | semesters with sections, exam windows and slot counts (students: own intake) |
+| POST | `/api/timetable/generate` | admin · `{ semesterId, sessionsPerWeek?, replace? }` — weekly routine for every section, clash-free against concurrent semesters |
+| GET | `/api/timetable/slots?semesterId&sectionId&teacherId&venueId` | weekly slots (students: own section only) |
+| POST / PATCH / DELETE | `/api/timetable/slots`, `/api/timetable/slots/:id` | admin · 409 with `details.clashes` on teacher/section/room overlap |
+| POST | `/api/timetable/slots/:id/exceptions` | admin · `{ date, kind: CANCELLED|TEACHER_CHANGE|ROOM_CHANGE|RESCHEDULED, teacherId?, venueId?, startTime?, endTime?, reason }` — cover/room clashes rejected; everyone affected notified |
+| GET | `/api/timetable/day?date&sectionId&teacherId&venueId` | concrete day: classes with exceptions applied + exams (student seat included) |
+| GET | `/api/timetable/week?semesterId&week` or `?date` | seven days; scoped per role |
+| GET | `/api/timetable/me` | this week for the signed-in student (section) or teacher |
+| GET | `/api/timetable/teachers`, `/api/timetable/sections?intakeId` | pickers |
+
+## Requests
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/requests` | `{ kind: TEACHER_ABSENCE|STUDENT_ABSENCE|SECTION_SWAP, slotId?, date, targetSectionId?, reason }` |
+| GET | `/api/requests?status` | own for students/lecturers; all for admin/leaders |
+| POST | `/api/requests/:id/decide` | admin/leader · `{ decision, note?, coverTeacherId? }` — approval applies the change (cover or cancellation, section move) |
+
+## Exams (v2 additions)
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/exams/schedule/generate` | admin · `{ semesterId, durationMin?, replace? }` — also runs automatically 21 days before each exam window |
+| POST | `/api/exams` | now takes `kind`, `seatingMode` (MIXED / BY_ID), `sectionIds`, `invigilators[{venueId,userId}]`; lecturers may create CLASS_TEST for their modules; 409 `details.clashes` on invigilator clash |
+| DELETE | `/api/exams/:id` | admin |
+| GET | `/api/exams/invigilations/me` | staff |
+
+## Fees & admit cards
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/fees?semesterId&status&q` · POST `/api/fees/generate` · PATCH `/api/fees/:id` | admin |
+| GET | `/api/fees/me` · POST `/api/fees/:id/pay` `{ method }` | student (mock gateway) |
+| POST | `/api/admit-cards/issue` `{ semesterId, studentId? }` | 409 while the fee is unpaid |
+| GET | `/api/admit-cards/:id.pdf` · GET `/api/admit-cards?semesterId` | |
+
+## Retakes & assistant
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/retakes?year` · POST `/api/retakes/generate` `{ year }` | admin · summer semester, offerings, resit enrolments and resit exams |
+| GET | `/api/assistant/status` · POST `/api/assistant/chat` `{ messages[] }` | tools run through this API with the caller's token; returns `reply` and `actions` |
