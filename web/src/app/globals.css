@@ -4,11 +4,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Islington College brand (islington.edu.np): Roboto, indigo #41448B, blue #2F6AAF,
+ * orange #E37E3F, yellow #F4D32A, red #CE2626, body grey #767676, square corners.
+ */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -39,6 +44,11 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-brand-indigo: #41448b;
+  --color-brand-blue: #2f6aaf;
+  --color-brand-orange: #e37e3f;
+  --color-brand-yellow: #f4d32a;
+  --color-brand-red: #ce2626;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,82 +59,91 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --font-sans: var(--font-roboto), Roboto, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --radius: 0.375rem;
+
+  --background: #f5f6f7;
+  --foreground: #1f2037;
+  --card: #ffffff;
+  --card-foreground: #1f2037;
+  --popover: #ffffff;
+  --popover-foreground: #1f2037;
+  --primary: #41448b;
+  --primary-foreground: #ffffff;
+  --secondary: #eceef8;
+  --secondary-foreground: #41448b;
+  --muted: #f0f1f4;
+  --muted-foreground: #767676;
+  --accent: #e8f0fa;
+  --accent-foreground: #2f6aaf;
+  --destructive: #ce2626;
+  --border: #e3e5ea;
+  --input: #d9dbe3;
+  --ring: #41448b;
+  --chart-1: #41448b;
+  --chart-2: #2f6aaf;
+  --chart-3: #e37e3f;
+  --chart-4: #f4d32a;
+  --chart-5: #9a9ab5;
+
+  --sidebar: #2d2f53;
+  --sidebar-foreground: #e6e7f2;
+  --sidebar-primary: #41448b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.08);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --sidebar-ring: #8c90e8;
 }
 
+/* Dark mode is true black with neutral greys; only actions keep the brand indigo. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #000000;
+  --foreground: #f2f2f2;
+  --card: #0f0f0f;
+  --card-foreground: #f2f2f2;
+  --popover: #111111;
+  --popover-foreground: #f2f2f2;
+  --primary: #6f73d9;
+  --primary-foreground: #ffffff;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #e6e6e6;
+  --muted: #161616;
+  --muted-foreground: #9a9a9a;
+  --accent: #1c1c1c;
+  --accent-foreground: #cfd8ea;
+  --destructive: #f26b6b;
+  --border: #262626;
+  --input: #2e2e2e;
+  --ring: #6f73d9;
+  --chart-1: #6f73d9;
+  --chart-2: #5b95d6;
+  --chart-3: #f0a06a;
+  --chart-4: #f4d32a;
+  --chart-5: #6b6b6b;
+
+  --sidebar: #000000;
+  --sidebar-foreground: #e0e0e0;
+  --sidebar-primary: #41448b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #161616;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #262626;
+  --sidebar-ring: #6f73d9;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.01em;
   }
 }
