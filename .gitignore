@@ -45,3 +45,6 @@ Thumbs.db
 *.log
 .vscode/
 .idea/
+
+# flutter web target is only used for local browser testing
+mobile/web/
