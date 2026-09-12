@@ -80,7 +80,7 @@ Mobile: `cd mobile && flutter pub get && flutter run` (emulator reaches the API 
 
 | | URL |
 |---|---|
-| Web | https://biggys-web.onrender.com |
+| Web | **https://kramiq.tech** (also https://biggys-web.onrender.com) |
 | API | https://biggys-api.onrender.com (`/health/ready`, `/health/version`) |
 | APK | GitHub Release `v1.0.0-hackathon` — installs on any phone and talks to the deployed API out of the box |
 | Status page | `{{STATUS_PAGE_URL}}` |

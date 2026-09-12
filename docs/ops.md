@@ -6,13 +6,34 @@ Fill the placeholders when the services are created (never paste secrets here).
 |---|---|---|
 | API (`backend/`) | Render `biggys-api` (Oregon, free), auto-deploys `main` | https://biggys-api.onrender.com |
 | Database | Render `biggys-db` (Oregon, free PostgreSQL 18) | — |
-| Web (`web/`) | Render `biggys-web` (Singapore, free), root directory `web/`, tracks `main` | https://biggys-web.onrender.com |
+| Web (`web/`) | Render `biggys-web` (Singapore, free), root directory `web/`, tracks `main` | https://kramiq.tech (also https://biggys-web.onrender.com) |
 | APK | GitHub Release `v1.0.0-hackathon` | `https://github.com/Salokya-1/The-Biggys/releases` |
 | Status page | UptimeRobot public page | `{{STATUS_PAGE_URL}}` |
 
+## Domain and DNS
+
+`kramiq.tech` is registered at Namecheap and its DNS is served by Namecheap BasicDNS
+(`dns1`/`dns2.registrar-servers.com`). Both hostnames are custom domains on the Render
+`biggys-web` service, each with a Render-issued certificate.
+
+| Type | Host | Value |
+|---|---|---|
+| ALIAS | `@` | `biggys-web.onrender.com` |
+| CNAME | `www` | `biggys-web.onrender.com` |
+
+An ALIAS is used on the apex rather than Render's `216.24.57.1` A record so the site follows
+Render if that address ever changes. `www` redirects to the apex. The SPF TXT record is
+unrelated to hosting and must be left alone.
+
+Adding another hostname later means two steps, in this order: add it under the service's
+**Custom Domains**, then point DNS at `biggys-web.onrender.com`. Render will not verify a
+domain it has not been told about, and a browser reaching the old target sees that target's
+certificate — which reads as "Not secure" rather than as a DNS problem. Resolvers cache the
+previous record for its full TTL; https://one.one.one.one/purge-cache/ clears Cloudflare's copy.
+
 ## Environment variables
 
-**Antideploy (API):** `DATABASE_URL` (Neon pooled), `JWT_SECRET`, `JWT_REFRESH_SECRET` (≥ 32 random chars each), `CORS_ORIGIN` = `{{VERCEL_URL}}` (comma-separate extra origins), `NODE_ENV=production`, optional `GIT_SHA`.
+**Antideploy (API):** `DATABASE_URL` (Neon pooled), `JWT_SECRET`, `JWT_REFRESH_SECRET` (≥ 32 random chars each), `CORS_ORIGIN` (comma-separated; the public hostnames in `PUBLIC_ORIGINS` in `backend/src/app.ts` are always allowed on top of it), `NODE_ENV=production`, optional `GIT_SHA`.
 **Vercel (web):** `NEXT_PUBLIC_API_URL` = `{{ANTIDEPLOY_APP_URL}}`.
 **APK:** built with `--dart-define=API_URL={{ANTIDEPLOY_APP_URL}}`; switchable at runtime in the app's Settings.
 
