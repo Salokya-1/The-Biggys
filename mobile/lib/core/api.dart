@@ -138,7 +138,7 @@ class ApiClient {
 
   Future<bool> healthy() async {
     try {
-      final res = await _dio.get('/health', options: Options(receiveTimeout: const Duration(seconds: 3), sendTimeout: const Duration(seconds: 3)));
+      final res = await _dio.get('/health', options: Options(receiveTimeout: const Duration(seconds: 3)));
       return res.statusCode == 200;
     } catch (_) {
       return false;
