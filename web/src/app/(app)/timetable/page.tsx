@@ -100,8 +100,10 @@ export default function TimetablePage() {
     if (!semesters.data?.length) return undefined;
     if (semesterId) return semesters.data.find((s) => s.id === semesterId);
     const t = todayIso();
-    const running = semesters.data.filter((s) => s.startDate.slice(0, 10) <= t && s.endDate.slice(0, 10) >= t);
-    return running.find((s) => s._count.slots > 0) ?? running[0] ?? semesters.data[0];
+    const soon = new Date(Date.now() + 21 * 86400e3).toISOString().slice(0, 10);
+    const running = semesters.data.filter((s) => s.startDate.slice(0, 10) <= soon && s.endDate.slice(0, 10) >= t);
+    const bySlots = (a: Semester, b: Semester) => b._count.slots - a._count.slots;
+    return [...running].sort(bySlots)[0] ?? [...semesters.data].sort(bySlots)[0];
   }, [semesters.data, semesterId]);
   const effectiveWeek = week || (sem ? Math.min(Math.max(weekOfDate(sem, todayIso()), 1), sem.teachingWeeks + 2) : 1);
 

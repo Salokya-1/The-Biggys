@@ -42,6 +42,7 @@ export interface DayItem {
 }
 
 export interface DayFilter {
+  semesterId?: string; // restrict to one semester's classes and exams
   sectionId?: string;
   teacherId?: string;
   venueId?: string;
@@ -64,7 +65,7 @@ export async function buildDay(date: Date, filter: DayFilter): Promise<DayItem[]
   if (teachingSemesters.length) {
     const slots = await prisma.timetableSlot.findMany({
       where: {
-        semesterId: { in: teachingSemesters.map((s) => s.id) },
+        semesterId: { in: teachingSemesters.map((s) => s.id).filter((id) => !filter.semesterId || id === filter.semesterId) },
         dayOfWeek: dow,
         ...(filter.sectionId ? { sectionId: filter.sectionId } : {}),
         ...(filter.venueId ? { venueId: filter.venueId } : {}),
@@ -103,7 +104,7 @@ export async function buildDay(date: Date, filter: DayFilter): Promise<DayItem[]
 
   // Exams on this date
   const exams = await prisma.examSession.findMany({
-    where: { date },
+    where: { date, ...(filter.semesterId ? { OR: [{ semesterId: filter.semesterId }, { offerings: { some: { semesterId: filter.semesterId } } }] } : {}) },
     include: {
       offerings: { select: { id: true, module: { select: { code: true, title: true } }, semester: { select: { intake: { select: { label: true, programme: { select: { code: true } } } } } } } },
       sections: { select: { id: true, name: true } },

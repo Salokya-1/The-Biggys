@@ -219,7 +219,7 @@ export async function timetableRoutes(app: FastifyInstance) {
     const q = parse(z.object({ semesterId: z.string().optional(), week: z.coerce.number().int().min(1).max(20).optional(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), sectionId: z.string().optional(), teacherId: z.string().optional(), venueId: z.string().optional() }), req.query);
     const scope = await scopeFor(req, q);
     const u = req.user!;
-    const filter = { ...scope, ...(u.role === 'LECTURER' || u.role === 'MODULE_LEADER' ? (!q.sectionId && !q.teacherId && !q.venueId ? { teacherId: u.id } : {}) : {}) };
+    const filter = { ...scope, semesterId: q.semesterId, ...(u.role === 'LECTURER' || u.role === 'MODULE_LEADER' ? (!q.sectionId && !q.teacherId && !q.venueId ? { teacherId: u.id } : {}) : {}) };
     let monday: Date;
     if (q.semesterId && q.week) {
       const sem = await prisma.semester.findUnique({ where: { id: q.semesterId } });
