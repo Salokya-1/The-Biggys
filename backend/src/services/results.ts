@@ -212,18 +212,22 @@ export async function storeResults(tx: Db, sheet: SheetContext, rows: SheetRow[]
   return data.length;
 }
 
-/** Simple, configurable-later standing rule: any FAIL → REVIEW, any RESIT → RESIT, else GOOD (published results only). */
+/**
+ * Standing rule (assumption, configurable later): latest published outcome per module offering;
+ * any FAIL or RESIT outstanding on 2+ modules → REVIEW; one RESIT → RESIT; else GOOD.
+ */
 export async function refreshStanding(tx: Db, studentIds: string[]) {
   for (const studentId of studentIds) {
     const results = await tx.result.findMany({
       where: { enrollment: { studentId }, markSheet: { status: 'PUBLISHED' } },
-      select: { outcome: true, enrollmentId: true, markSheetVersion: true },
-      orderBy: { markSheetVersion: 'desc' },
+      select: { outcome: true, markSheetVersion: true, enrollment: { select: { moduleOfferingId: true, attempt: true } } },
+      orderBy: [{ enrollment: { attempt: 'desc' } }, { markSheetVersion: 'desc' }],
     });
     const latest = new Map<string, string>();
-    for (const r of results) if (!latest.has(r.enrollmentId)) latest.set(r.enrollmentId, r.outcome);
+    for (const r of results) if (!latest.has(r.enrollment.moduleOfferingId)) latest.set(r.enrollment.moduleOfferingId, r.outcome);
     const outcomes = [...latest.values()];
-    const standing = outcomes.includes('FAIL') ? 'REVIEW' : outcomes.includes('RESIT') ? 'RESIT' : 'GOOD';
+    const resits = outcomes.filter((o) => o === 'RESIT').length;
+    const standing = outcomes.includes('FAIL') || resits >= 2 ? 'REVIEW' : resits === 1 ? 'RESIT' : 'GOOD';
     await tx.student.update({ where: { id: studentId }, data: { standing } });
   }
 }

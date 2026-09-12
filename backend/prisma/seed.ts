@@ -266,7 +266,7 @@ async function main() {
           if (state === 'EMPTY_DRAFT') continue;
 
           // marks: ability per student (stable across modules via a hash of the id)
-          const cohortBias = it.label === 'Sep 2024' && code === 'CS4001' ? 14 : 0; // makes a "mean shift" flag on the next offering
+          const cohortBias = it.label === 'Sep 2024' && code === 'CS4001' ? 22 : 0; // makes a "mean shift" flag on the next offering
           const rows: { enrollmentId: string; attempt: number; isResit: boolean; marks: { componentId: string; rawMark: number | null; isAbsent: boolean }[] }[] = [];
           for (const e of enrollments) {
             const ability = clamp(gauss(56 + cohortBias, 13), 12, 96);
@@ -336,7 +336,9 @@ async function main() {
       if (!cur || r.enrollment.attempt > cur.attempt) latestByOffering.set(r.enrollment.moduleOfferingId, { attempt: r.enrollment.attempt, outcome: r.outcome });
     }
     const outcomes = [...latestByOffering.values()].map((x) => x.outcome);
-    const standing = outcomes.includes('FAIL') ? 'REVIEW' : outcomes.includes('RESIT') ? 'RESIT' : 'GOOD';
+    const resits = outcomes.filter((o) => o === 'RESIT').length;
+    // Same rule as services/results.ts refreshStanding: any FAIL or 2+ modules outstanding → REVIEW.
+    const standing = outcomes.includes('FAIL') || resits >= 2 ? 'REVIEW' : resits === 1 ? 'RESIT' : 'GOOD';
     await prisma.student.update({ where: { id: st.id }, data: { standing } });
   }
 
