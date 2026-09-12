@@ -49,6 +49,13 @@ export default function StudentsPage() {
     [programmes.data, programmeId],
   );
 
+  // Base UI Select renders the raw value unless it is given an items map.
+  const programmeItems = { all: 'All programmes', ...Object.fromEntries((programmes.data ?? []).map((p) => [p.id, `${p.code} · ${p.name}`])) };
+  const intakeItems = { all: 'All intakes', ...Object.fromEntries(intakes.map((i) => [i.id, i.label])) };
+  const semesterItems = { all: 'Any semester', ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [String(n), `Semester ${n}`])) };
+  const statusItems = { all: 'Any status', ...Object.fromEntries(STATUSES.map((s) => [s, s])) };
+  const standingItems = { all: 'Any standing', ...Object.fromEntries(STANDINGS.map((s) => [s, s])) };
+
   const query = qs({ q: debounced, programmeId, intakeId, status, standing, semesterNumber, page, pageSize });
   const students = useQuery({
     queryKey: ['students', query],
@@ -68,40 +75,35 @@ export default function StudentsPage() {
           <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="pl-8" placeholder="Search ID, name or email" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <Select value={programmeId} onValueChange={filter(setProgrammeId, true)}>
-          <SelectTrigger><SelectValue placeholder="Programme" /></SelectTrigger>
+        <Select value={programmeId} onValueChange={filter(setProgrammeId, true)} items={programmeItems}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="Programme" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All programmes</SelectItem>
-            {programmes.data?.map((p) => <SelectItem key={p.id} value={p.id}>{p.code} · {p.name}</SelectItem>)}
+            {Object.entries(programmeItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={intakeId} onValueChange={filter(setIntakeId)} disabled={programmeId === 'all'}>
-          <SelectTrigger><SelectValue placeholder="Intake" /></SelectTrigger>
+        <Select value={intakeId} onValueChange={filter(setIntakeId)} disabled={programmeId === 'all'} items={intakeItems}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="Intake" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All intakes</SelectItem>
-            {intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>)}
+            {Object.entries(intakeItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={semesterNumber} onValueChange={filter(setSemesterNumber)}>
-          <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
+        <Select value={semesterNumber} onValueChange={filter(setSemesterNumber)} items={semesterItems}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="Semester" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Any semester</SelectItem>
-            {[1, 2, 3, 4, 5, 6].map((n) => <SelectItem key={n} value={String(n)}>Semester {n}</SelectItem>)}
+            {Object.entries(semesterItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
           </SelectContent>
         </Select>
         <div className="flex gap-2">
-          <Select value={status} onValueChange={filter(setStatus)}>
-            <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+          <Select value={status} onValueChange={filter(setStatus)} items={statusItems}>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Any status</SelectItem>
-              {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {Object.entries(statusItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={standing} onValueChange={filter(setStanding)}>
-            <SelectTrigger><SelectValue placeholder="Standing" /></SelectTrigger>
+          <Select value={standing} onValueChange={filter(setStanding)} items={standingItems}>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Standing" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Any standing</SelectItem>
-              {STANDINGS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {Object.entries(standingItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
