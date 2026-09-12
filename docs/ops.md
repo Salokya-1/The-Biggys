@@ -37,3 +37,20 @@ Fill the placeholders when the services are created (never paste secrets here).
 **If the venue Wi-Fi is down:** laptop runs `backend` + `web` locally against local Postgres (`docker compose up -d` or the portable Postgres), `npm run seed`, phones use `http://<laptop-ip>:8080` from Settings.
 
 **Verify before freeze (10:30):** `curl {{ANTIDEPLOY_APP_URL}}/health/ready` → `"status":"ok"`; `{{VERCEL_URL}}` login as each demo account; APK on two phones logs in and shows results + seat; `demo-clean` branch fresh; status page green.
+
+
+## Deploying everything to Render (alternative to Antideploy + Vercel + Neon)
+
+`render.yaml` at the repo root is a blueprint that creates all three pieces at once: a free Postgres, the API and the web app.
+
+1. Render dashboard → **Blueprints** → *New Blueprint Instance* → select `Salokya-1/The-Biggys` → Apply. It creates `biggys-db`, `biggys-api` and `biggys-web`.
+2. When `biggys-api` is live, copy its URL (`https://biggys-api-xxxx.onrender.com`) and set it as `NEXT_PUBLIC_API_URL` on **biggys-web**, then *Manual Deploy → Clear build cache & deploy* (Next.js bakes public variables at build time).
+3. Copy the web URL and set it as `CORS_ORIGIN` on **biggys-api** (comma-separate several origins). The API restarts by itself.
+4. Optional: set `OPENROUTER_API_KEY` on `biggys-api` to switch the assistant on.
+5. Seed the demo data once, from a laptop, against the Render database:
+   ```bash
+   cd backend && DATABASE_URL="<Render external connection string>" npm run seed
+   ```
+   Use the **External** connection string from the `biggys-db` page; the internal one only resolves inside Render.
+
+Notes for the free tier: services sleep after 15 minutes idle and take roughly 50 seconds to wake, so keep the cron-job.org ping on `/health/ready` pointed at the Render URL as well. The free Postgres expires after 30 days — export with `pg_dump` before then if the project keeps running. Migrations run in `startCommand`, so a schema change ships with the deploy; a failed migration stops the release and Render keeps the previous version serving.

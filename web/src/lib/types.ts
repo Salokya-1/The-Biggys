@@ -6,6 +6,8 @@ export interface AuthUser {
   name: string;
   role: Role;
   studentId: string | null;
+  /** Capability keys this account holds (role defaults plus per-user overrides). */
+  actions?: string[];
 }
 
 export interface LoginResponse {
@@ -251,6 +253,7 @@ export interface Venue {
   disabledSeats: { row: number; col: number }[];
   adjacencyMode: 'ROW' | 'ROW_AND_COLUMN';
   isClassroom: boolean;
+  layout?: unknown;
   capacity: number;
   _count?: { examSessions: number };
 }
@@ -319,4 +322,83 @@ export interface MyExamSeat {
   durationMin: number;
   modules: { code: string; title: string }[];
   seat: { venue: { id: string; name: string; building: string; rows: number; cols: number; disabledSeats: { row: number; col: number }[] }; row: number; col: number; seatLabel: string } | null;
+}
+
+
+// ---------- users, permissions, class lists, room layouts ----------
+
+export interface CapabilityDef {
+  key: string;
+  label: string;
+  group: string;
+  roles: Role[];
+}
+
+export interface ManagedUser {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  isActive: boolean;
+  lockedUntil: string | null;
+  createdAt: string;
+  student: { id: string; studentId: string; section: { name: string } | null; intake: { label: string; programme: { code: string } } } | null;
+  workload: { modulesLed: number; offerings: number; classes: number; invigilations: number };
+  overrides: { grant: string[]; revoke: string[] };
+  actions: string[];
+  temporaryPassword?: string;
+}
+
+export interface ClassListRow {
+  enrollmentId: string;
+  studentId: string;
+  name: string;
+  email: string | null;
+  section: string | null;
+  status: string;
+  standing: string;
+  specialNeedsSeating: boolean;
+  attempt: number;
+  isResit: boolean;
+  studentRecordId: string;
+  result: { grade: string; outcome: string; overallMark: number; published: boolean } | null;
+}
+
+export interface ClassList {
+  offering: {
+    id: string;
+    module: { code: string; title: string; credits: number; moduleLeader: { name: string } | null };
+    semester: { number: number; term: string; intake: { label: string; programme: { code: string; name: string } } };
+    lecturer: { id: string; name: string; email: string | null } | null;
+    components: { id: string; name: string; weight: number; maxMark: number }[];
+  };
+  total: number;
+  resits: number;
+  specialNeeds: number;
+  sections: { section: string; students: ClassListRow[]; classes: { dayOfWeek: number; startTime: string; endTime: string; venue: string | null; teacher: string }[] }[];
+  students: ClassListRow[];
+}
+
+export type CellKind = 'DESK' | 'AISLE' | 'OFF' | 'TEACHER';
+export interface RoomLayout {
+  cells?: Record<string, CellKind>;
+  labelMode?: 'ROW_LETTER' | 'NUMERIC';
+  note?: string;
+}
+
+export interface SlotCandidate {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  venueId: string;
+  venueName: string;
+  keepsRoom: boolean;
+  createsGap: boolean;
+}
+
+export interface ReasonCheck {
+  verdict: 'OK' | 'WEAK' | 'GIBBERISH';
+  score: number;
+  notes: string[];
+  category?: string;
 }

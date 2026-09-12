@@ -103,6 +103,7 @@ export default function ModulesPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
+                    <Button size="sm" variant="ghost" className="mr-1" onClick={() => router.push(`/modules/${o.id}/class-list`)}>Class list</Button>
                     {hasOpen ? (
                       <Button size="sm" variant="outline" onClick={() => router.push(`/marksheets/${latest.id}`)}>Open</Button>
                     ) : canOpenNew && canCreate(o) && o.components.length > 0 ? (

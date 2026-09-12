@@ -8,6 +8,8 @@ import type { AuthUser } from './types';
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
+  /** Capability check — the same keys the API enforces, so the UI hides what would 403. */
+  can: (action: string) => boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
@@ -27,7 +29,7 @@ async function loadSession(): Promise<AuthUser | null> {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
-  const session = useQuery({ queryKey: SESSION_KEY, queryFn: loadSession, staleTime: Infinity, retry: false });
+  const session = useQuery({ queryKey: SESSION_KEY, queryFn: loadSession, staleTime: 60_000, retry: false });
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -44,10 +46,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'session' });
   }, [qc]);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({ user: session.data ?? null, loading: session.isPending, login, logout }),
-    [session.data, session.isPending, login, logout],
-  );
+  const user = session.data ?? null;
+  const can = useCallback((action: string) => !!user?.actions?.includes(action), [user]);
+
+  const value = useMemo<AuthContextValue>(() => ({ user, loading: session.isPending, can, login, logout }), [user, session.isPending, can, login, logout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

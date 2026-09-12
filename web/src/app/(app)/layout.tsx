@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Armchair, BookOpen, Building2, CalendarDays, CalendarClock, ClipboardCheck, GraduationCap, Inbox, LayoutDashboard, LogOut, Receipt, Sun, Users } from 'lucide-react';
+import { Armchair, BookOpen, Building2, CalendarDays, CalendarClock, ClipboardCheck, GraduationCap, Inbox, LayoutDashboard, LogOut, Receipt, ShieldCheck, Sun, Users } from 'lucide-react';
 import { Assistant } from '@/components/assistant';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,8 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   roles: Role[];
+  /** Extra capability gate: the entry is hidden when the account lacks it. */
+  needs?: string;
 }
 
 const NAV: NavItem[] = [
@@ -30,16 +32,17 @@ const NAV: NavItem[] = [
   { href: '/timetable', label: 'Timetable', icon: CalendarClock, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/exams', label: 'Exams', icon: CalendarDays, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/requests', label: 'Requests', icon: Inbox, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
-  { href: '/venues', label: 'Venues', icon: Building2, roles: ['ADMIN'] },
-  { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN'] },
-  { href: '/retakes', label: 'Retakes', icon: Sun, roles: ['ADMIN'] },
+  { href: '/venues', label: 'Rooms', icon: Building2, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'seating.read' },
+  { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'fees.read' },
+  { href: '/retakes', label: 'Retakes', icon: Sun, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'module.read' },
+  { href: '/admin/users', label: 'Users', icon: ShieldCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage' },
   { href: '/me', label: 'My results', icon: GraduationCap, roles: ['STUDENT'] },
   { href: '/me/exams', label: 'My exam seats', icon: Armchair, roles: ['STUDENT'] },
   { href: '/me/fees', label: 'Fees & admit card', icon: Receipt, roles: ['STUDENT'] },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, can } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -63,7 +66,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const items = NAV.filter((n) => n.roles.includes(user.role));
+  const items = NAV.filter((n) => n.roles.includes(user.role) && (!n.needs || can(n.needs)));
 
   return (
     <div className="flex min-h-screen bg-background">

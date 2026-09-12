@@ -1,0 +1,59 @@
+# Render blueprint — API + web + Postgres in one deploy.
+# Render dashboard → Blueprints → New Blueprint Instance → pick this repo. Everything below is free tier.
+# After the first deploy set NEXT_PUBLIC_API_URL on biggys-web to the API's URL and redeploy the web service
+# (Next.js bakes public env vars at build time), and add that web URL to CORS_ORIGIN on biggys-api.
+
+databases:
+  - name: biggys-db
+    plan: free
+    databaseName: biggys
+    user: biggys
+
+services:
+  - type: web
+    name: biggys-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    region: singapore
+    buildCommand: npm ci && npx prisma generate && npm run build
+    # Migrations run before the server starts; server.ts runs them again defensively (idempotent).
+    startCommand: npx prisma migrate deploy && node dist/server.js
+    healthCheckPath: /health/ready
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: biggys-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false # set to the biggys-web URL once it exists
+      - key: RUN_MIGRATIONS_ON_START
+        value: 'true'
+      - key: LOG_LEVEL
+        value: info
+      - key: OPENROUTER_API_KEY
+        sync: false # optional; leave empty to disable the assistant
+      - key: OPENROUTER_MODEL
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
+
+  - type: web
+    name: biggys-web
+    runtime: node
+    plan: free
+    rootDir: web
+    region: singapore
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        sync: false # set to https://biggys-api-XXXX.onrender.com, then redeploy this service
