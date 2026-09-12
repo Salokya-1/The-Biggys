@@ -161,19 +161,77 @@ class AvailabilityScreen extends ConsumerWidget {
     );
     if (ok != true) return;
 
-    try {
+    // The first attempt is refused if the window covers classes they are teaching, and comes back
+    // with the list and who could take each one. Only a confirmed second attempt hands them over.
+    Future<void> submit({bool confirm = false}) async {
       final res = await ref.read(apiProvider).post(
         '/api/teachers/${me.id}/unavailability',
-        body: {'dayOfWeek': day, 'startTime': fmt(start), 'endTime': fmt(end), if (reason.text.trim().isNotEmpty) 'reason': reason.text.trim()},
+        body: {
+          'dayOfWeek': day,
+          'startTime': fmt(start),
+          'endTime': fmt(end),
+          if (reason.text.trim().isNotEmpty) 'reason': reason.text.trim(),
+          if (confirm) 'confirm': true,
+        },
       ) as Map<String, dynamic>;
       ref.invalidate(myUnavailabilityProvider);
-      final affected = (res['affectedClasses'] as List?)?.length ?? 0;
+      final handovers = (res['handovers'] as List?) ?? const [];
+      final covered = handovers.where((h) => (h as Map)['cover'] != null).length;
       messenger.showSnackBar(SnackBar(
-        content: Text(affected == 0 ? 'Blocked. The generator will work around it.' : 'Blocked. $affected class(es) already sit in that window — RTE has been told.'),
+        content: Text(handovers.isEmpty
+            ? 'Blocked. The generator will work around it.'
+            : 'Blocked. $covered of ${handovers.length} class(es) handed over. Your students have been told.'),
         duration: const Duration(seconds: 6),
       ));
+    }
+
+    try {
+      await submit();
     } on ApiException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message), duration: const Duration(seconds: 6)));
+      final details = e.details;
+      final needsConfirmation = details is Map && details['needsConfirmation'] == true;
+      if (!needsConfirmation) {
+        messenger.showSnackBar(SnackBar(content: Text(e.message), duration: const Duration(seconds: 6)));
+        return;
+      }
+      if (!context.mounted) return;
+      final classes = (details['classes'] as List?) ?? const [];
+      final goAhead = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Hand these classes over?'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(e.message),
+            const SizedBox(height: 12),
+            for (final raw in classes)
+              Builder(builder: (context) {
+                final c = raw as Map<String, dynamic>;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(c['what'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      c['cover'] == null ? 'Nobody on the module is free — RTE will place it' : '${c['cover']} can take it',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ]),
+                );
+              }),
+            Text('Your students are told the lecturer has changed. Time and room stay as they are.',
+                style: Theme.of(dialogContext).textTheme.bodySmall),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Block and hand over')),
+          ],
+        ),
+      );
+      if (goAhead != true) return;
+      try {
+        await submit(confirm: true);
+      } on ApiException catch (e2) {
+        messenger.showSnackBar(SnackBar(content: Text(e2.message), duration: const Duration(seconds: 6)));
+      }
     }
   }
 }

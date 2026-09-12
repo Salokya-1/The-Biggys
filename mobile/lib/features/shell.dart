@@ -5,6 +5,7 @@ import '../core/auth.dart';
 import 'approvals_screen.dart';
 import 'exams_screen.dart';
 import 'home_screen.dart';
+import 'messages_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
 import 'results_screen.dart';
@@ -31,6 +32,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             (icon: Icons.calendar_month_outlined, label: 'Timetable', screen: TimetableScreen()),
             (icon: Icons.school_outlined, label: 'Results', screen: ResultsScreen()),
             (icon: Icons.event_seat_outlined, label: 'Exams', screen: ExamsScreen()),
+            (icon: Icons.forum_outlined, label: 'Messages', screen: MessagesScreen()),
             (icon: Icons.person_outline, label: 'Profile', screen: ProfileScreen()),
           ]
         : const [
@@ -38,6 +40,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             (icon: Icons.calendar_month_outlined, label: 'Timetable', screen: TimetableScreen()),
             (icon: Icons.fact_check_outlined, label: 'Sheets', screen: ApprovalsScreen()),
             (icon: Icons.notifications_outlined, label: 'Alerts', screen: NotificationsScreen()),
+            (icon: Icons.forum_outlined, label: 'Messages', screen: MessagesScreen()),
             (icon: Icons.person_outline, label: 'Profile', screen: ProfileScreen()),
           ];
     final i = _index.clamp(0, tabs.length - 1);
