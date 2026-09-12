@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpen, ClipboardCheck, GraduationCap, LayoutDashboard, LogOut, Users } from 'lucide-react';
+import { Armchair, BookOpen, Building2, CalendarDays, ClipboardCheck, GraduationCap, LayoutDashboard, LogOut, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,7 +23,10 @@ const NAV: NavItem[] = [
   { href: '/students', label: 'Students', icon: Users, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/modules', label: 'Modules', icon: BookOpen, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/marksheets', label: 'Mark sheets', icon: ClipboardCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { href: '/exams', label: 'Exams', icon: CalendarDays, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { href: '/venues', label: 'Venues', icon: Building2, roles: ['ADMIN'] },
   { href: '/me', label: 'My results', icon: GraduationCap, roles: ['STUDENT'] },
+  { href: '/me/exams', label: 'My exam seats', icon: Armchair, roles: ['STUDENT'] },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

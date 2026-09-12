@@ -239,3 +239,70 @@ export interface ImportPreview {
   rows: ImportRow[];
   summary: { total: number; ok: number; warnings: number; errors: number };
 }
+
+// ---------- exams & seating ----------
+
+export interface Venue {
+  id: string;
+  name: string;
+  building: string;
+  rows: number;
+  cols: number;
+  disabledSeats: { row: number; col: number }[];
+  adjacencyMode: 'ROW' | 'ROW_AND_COLUMN';
+  capacity: number;
+  _count?: { examSessions: number };
+}
+
+export interface ExamOffering {
+  id: string;
+  module: { code: string; title: string };
+  semester: { number: number; intake: { label: string; programme: { code: string } } };
+  _count: { enrollments: number };
+}
+
+export interface ExamSessionListItem {
+  id: string;
+  title: string;
+  date: string;
+  startTime: string;
+  durationMin: number;
+  seed: number;
+  offerings: ExamOffering[];
+  venues: Omit<Venue, 'capacity' | '_count'>[];
+  capacity: number;
+  candidates: number;
+  seated: number;
+}
+
+export interface SeatAllocationView {
+  venueId: string;
+  row: number;
+  col: number;
+  seatLabel: string;
+  offeringId: string;
+  moduleCode: string;
+  student: { id: string; studentId: string; name: string; specialNeedsSeating: boolean };
+  runId: string;
+}
+
+export interface ExamDetail {
+  session: { id: string; title: string; date: string; startTime: string; durationMin: number; seed: number; offerings: ExamOffering[] };
+  venues: (Omit<Venue, '_count'> & { used: number; violations: number })[];
+  allocations: SeatAllocationView[];
+  candidates: number;
+  unseated: { studentId: string; label: string; name: string; moduleCode: string; specialNeeds: boolean }[];
+  violations: { venueId: string; a: string; b: string; seatA: string; seatB: string }[];
+  generated: boolean;
+  runId: string | null;
+}
+
+export interface MyExamSeat {
+  id: string;
+  title: string;
+  date: string;
+  startTime: string;
+  durationMin: number;
+  modules: { code: string; title: string }[];
+  seat: { venue: { id: string; name: string; building: string; rows: number; cols: number; disabledSeats: { row: number; col: number }[] }; row: number; col: number; seatLabel: string } | null;
+}
