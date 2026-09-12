@@ -125,24 +125,25 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   student             Student?
-  ledModules          Module[]              @relation("ModuleLeader")
-  lecturedOfferings   ModuleOffering[]      @relation("OfferingLecturer")
-  coLecturedOfferings ModuleOffering[]      @relation("OfferingCoLecturer")
-  cameraRequests      CameraAccessRequest[] @relation("CameraRequester")
-  supportClasses      SupportClass[]        @relation("SupportClassTeacher")
-  raisedClassAlerts   ClassAlert[]          @relation("ClassAlertRaisedBy")
-  coveredClassAlerts  ClassAlert[]          @relation("ClassAlertCover")
-  submittedSheets     MarkSheet[]           @relation("SheetSubmitter")
-  approvedSheets      MarkSheet[]           @relation("SheetApprover")
-  publishedSheets     MarkSheet[]           @relation("SheetPublisher")
+  ledModules          Module[]                @relation("ModuleLeader")
+  lecturedOfferings   ModuleOffering[]        @relation("OfferingLecturer")
+  coLecturedOfferings ModuleOffering[]        @relation("OfferingCoLecturer")
+  cameraRequests      CameraAccessRequest[]   @relation("CameraRequester")
+  supportClasses      SupportClass[]          @relation("SupportClassTeacher")
+  raisedClassAlerts   ClassAlert[]            @relation("ClassAlertRaisedBy")
+  coveredClassAlerts  ClassAlert[]            @relation("ClassAlertCover")
+  unavailability      TeacherUnavailability[]
+  submittedSheets     MarkSheet[]             @relation("SheetSubmitter")
+  approvedSheets      MarkSheet[]             @relation("SheetApprover")
+  publishedSheets     MarkSheet[]             @relation("SheetPublisher")
   importBatches       ImportBatch[]
   auditLogs           AuditLog[]
   notifications       Notification[]
   refreshTokens       RefreshToken[]
-  taughtSlots         TimetableSlot[]       @relation("SlotTeacher")
-  coverSlots          SlotException[]       @relation("ExceptionTeacher")
-  requests            ChangeRequest[]       @relation("Requester")
-  decidedRequests     ChangeRequest[]       @relation("Decider")
+  taughtSlots         TimetableSlot[]         @relation("SlotTeacher")
+  coverSlots          SlotException[]         @relation("ExceptionTeacher")
+  requests            ChangeRequest[]         @relation("Requester")
+  decidedRequests     ChangeRequest[]         @relation("Decider")
   invigilations       ExamInvigilator[]
 }
 
@@ -809,4 +810,20 @@ enum ClassAlertStatus {
   COVER_ASSIGNED
   RESOLVED
   DISMISSED
+}
+
+/// When a teacher cannot be timetabled. Part-time staff, industry days, a standing commitment —
+/// the routine has to work around them, so they say so once and the generator respects it.
+model TeacherUnavailability {
+  id        String   @id @default(cuid())
+  teacherId String
+  dayOfWeek Int // 7 = Sunday, 1 = Monday … 5 = Friday
+  startTime String
+  endTime   String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  teacher User @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@index([teacherId, dayOfWeek])
 }

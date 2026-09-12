@@ -7,6 +7,7 @@ import {
   daysFor,
   sessionsFor,
   yearOfSemester,
+  allowedGap,
   breaksGapRule,
   findClashes,
   findGapViolations,
@@ -112,10 +113,25 @@ describe('generateTimetable', () => {
 describe('breaksGapRule / findGapViolations', () => {
   it('allows a compact day and rejects a long hole', () => {
     const day = [{ dayOfWeek: 1, startTime: '08:00', endTime: '09:30' }];
-    expect(breaksGapRule(day, { dayOfWeek: 1, startTime: '09:45', endTime: '11:15' })).toBe(false);
-    expect(breaksGapRule(day, { dayOfWeek: 1, startTime: '11:30', endTime: '13:00' })).toBe(false); // exactly 2 h
+    expect(breaksGapRule(day, { dayOfWeek: 1, startTime: '09:45', endTime: '11:15' })).toBe(false); // 15 min
+    expect(breaksGapRule(day, { dayOfWeek: 1, startTime: '11:00', endTime: '12:30' })).toBe(false); // 90 min, the length of both
+    expect(breaksGapRule(day, { dayOfWeek: 1, startTime: '11:30', endTime: '13:00' })).toBe(true); // 2 h between two 90-min classes
     expect(breaksGapRule(day, { dayOfWeek: 1, startTime: '14:00', endTime: '15:30' })).toBe(true); // 4.5 h
     expect(breaksGapRule(day, { dayOfWeek: 2, startTime: '15:45', endTime: '17:15' })).toBe(false); // other day
+  });
+
+  it('lets the classes either side of a gap decide how long it may be', () => {
+    // Two one-hour classes may sit an hour apart, and no further.
+    const hour = [{ dayOfWeek: 1, startTime: '08:00', endTime: '09:00' }];
+    expect(breaksGapRule(hour, { dayOfWeek: 1, startTime: '10:00', endTime: '11:00' })).toBe(false);
+    expect(breaksGapRule(hour, { dayOfWeek: 1, startTime: '10:30', endTime: '11:30' })).toBe(true);
+    // Two two-hour classes get the full ceiling.
+    const long = [{ dayOfWeek: 1, startTime: '08:00', endTime: '10:00' }];
+    expect(breaksGapRule(long, { dayOfWeek: 1, startTime: '12:00', endTime: '14:00' })).toBe(false);
+    expect(allowedGap(60, 60)).toBe(60);
+    expect(allowedGap(120, 120)).toBe(120);
+    expect(allowedGap(60, 120)).toBe(60); // the shorter of the two decides
+    expect(allowedGap(240, 240)).toBe(DEFAULT_MAX_GAP_MIN); // never past the ceiling
   });
 
   it('lists the offending gap', () => {
@@ -123,7 +139,7 @@ describe('breaksGapRule / findGapViolations', () => {
       { sectionId: 'A', dayOfWeek: 1, startTime: '08:00', endTime: '09:30' },
       { sectionId: 'A', dayOfWeek: 1, startTime: '15:45', endTime: '17:15' },
     ]);
-    expect(v).toEqual([{ sectionId: 'A', dayOfWeek: 1, after: '09:30', before: '15:45', gapMinutes: 375 }]);
+    expect(v).toEqual([{ sectionId: 'A', dayOfWeek: 1, after: '09:30', before: '15:45', gapMinutes: 375, allowedMinutes: 90 }]);
     expect(DEFAULT_MAX_GAP_MIN).toBe(120);
   });
 });

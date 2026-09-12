@@ -508,3 +508,31 @@ export interface ClassAlertRow {
     moduleOffering: { module: { code: string; title: string } };
   };
 }
+
+export interface TeacherOverview {
+  id: string;
+  name: string;
+  email: string;
+  role: 'LECTURER' | 'MODULE_LEADER' | 'ADMIN' | 'STUDENT';
+  modules: string[];
+  leads: string[];
+  classes: {
+    id: string;
+    kind: ClassKind;
+    kindLabel: string;
+    day: string;
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+    hours: number;
+    module: { code: string; title: string };
+    cohort: string;
+    groups: string[];
+    venue: string | null;
+  }[];
+  classCount: number;
+  contactHours: number;
+  daysUsed: number[];
+  blocked: { id: string; day: string; dayOfWeek: number; startTime: string; endTime: string; reason: string | null }[];
+  invigilations: { title: string; date: string; startTime: string }[];
+}

@@ -206,11 +206,26 @@ class Booking {
   }
 }
 
-/** Would adding `p` leave the section with a gap longer than `maxGap` on that day? */
+/**
+ * The longest gap allowed between two particular classes.
+ *
+ * A flat two-hour rule is too loose between short classes: an hour of teaching, two hours of
+ * nothing, another hour is a wasted morning. The allowance therefore follows the classes either
+ * side of it — two one-hour classes may be an hour apart, two two-hour classes two hours — and
+ * never exceeds the ceiling.
+ */
+export function allowedGap(beforeMin: number, afterMin: number, ceiling = DEFAULT_MAX_GAP_MIN): number {
+  return Math.min(ceiling, Math.max(30, Math.min(beforeMin, afterMin)));
+}
+
+const lengthOf = (i: Interval) => toMinutes(i.endTime) - toMinutes(i.startTime);
+
+/** Would adding `p` leave the section a gap longer than the classes either side of it allow? */
 export function breaksGapRule(dayIntervals: Interval[], p: Interval, maxGap = DEFAULT_MAX_GAP_MIN): boolean {
   const day = [...dayIntervals.filter((i) => i.dayOfWeek === p.dayOfWeek), p].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
   for (let i = 1; i < day.length; i++) {
-    if (toMinutes(day[i].startTime) - toMinutes(day[i - 1].endTime) > maxGap) return true;
+    const gap = toMinutes(day[i].startTime) - toMinutes(day[i - 1].endTime);
+    if (gap > allowedGap(lengthOf(day[i - 1]), lengthOf(day[i]), maxGap)) return true;
   }
   return false;
 }
@@ -221,6 +236,8 @@ export interface GapViolation {
   after: string;
   before: string;
   gapMinutes: number;
+  /** What the classes either side of the gap allowed. */
+  allowedMinutes: number;
 }
 
 /** Gaps longer than `maxGap` in a finished timetable, per section and day. */
@@ -236,13 +253,22 @@ export function findGapViolations<T extends { sectionId: string; dayOfWeek: numb
     const sorted = [...list].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
     for (let i = 1; i < sorted.length; i++) {
       const gap = toMinutes(sorted[i].startTime) - toMinutes(sorted[i - 1].endTime);
-      if (gap > maxGap) out.push({ sectionId, dayOfWeek: Number(day), after: sorted[i - 1].endTime, before: sorted[i].startTime, gapMinutes: gap });
+      const allowed = allowedGap(lengthOf(sorted[i - 1]), lengthOf(sorted[i]), maxGap);
+      if (gap > allowed) out.push({ sectionId, dayOfWeek: Number(day), after: sorted[i - 1].endTime, before: sorted[i].startTime, gapMinutes: gap, allowedMinutes: allowed });
     }
   }
   return out;
 }
 
 /** Bookings that already exist (e.g. another semester in the same weeks) and must be respected. */
+/** A window in the week when a teacher cannot be given a class at all. */
+export interface Unavailable {
+  teacherId: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
 export interface ExistingBooking {
   teacherId: string;
   venueId: string | null;
@@ -258,8 +284,12 @@ export function generateTimetable(
   rooms: TtRoom[],
   periodsOrUndefined: Period[] | undefined = undefined,
   existing: ExistingBooking[] = [],
+  unavailable: Unavailable[] = [],
 ): TtResult {
   const teacherBusy = new Booking();
+  // Part-time staff and standing commitments are simply time the teacher does not have.
+  const teacherOff = new Booking();
+  for (const u of unavailable) teacherOff.add(u.teacherId, { dayOfWeek: u.dayOfWeek, startTime: u.startTime, endTime: u.endTime });
   const sectionBusy = new Booking();
   const roomBusy = new Booking();
   const slots: TtSlot[] = [];
@@ -310,6 +340,10 @@ export function generateTimetable(
         const p = periods[(from + i) % periods.length];
         if (groups.some((g) => sectionBusy.busy(g.id, p))) continue;
         if (teacherBusy.busy(teacherId, p)) continue;
+        if (teacherOff.busy(teacherId, p)) {
+          reason = 'the teacher is not available at the times that were free';
+          continue;
+        }
         if (respectGap && groups.some((g) => breaksGapRule(sectionBusy.get(g.id), p, maxGap))) {
           reason = `only periods that would leave a gap longer than ${maxGap / 60} h were free`;
           continue;

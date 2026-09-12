@@ -25,6 +25,7 @@ import { cameraRoutes } from './routes/camera';
 import { moduleOverviewRoutes } from './routes/module-overview';
 import { allocationRoutes } from './routes/allocation';
 import { supportRoutes } from './routes/support';
+import { teacherRoutes } from './routes/teachers';
 import multipart from '@fastify/multipart';
 
 export async function buildApp() {
@@ -115,6 +116,7 @@ export async function buildApp() {
       await api.register(moduleOverviewRoutes);
       await api.register(allocationRoutes);
       await api.register(supportRoutes);
+      await api.register(teacherRoutes);
     },
     { prefix: '/api' },
   );

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
@@ -64,7 +65,7 @@ export async function timetableRoutes(app: FastifyInstance) {
       where: { id: semesterId },
       include: {
         intake: { include: { sections: { include: { _count: { select: { students: true } } } } } },
-        offerings: { include: { module: { select: { code: true } }, lecturer: { select: { id: true } } } },
+        offerings: { include: { module: { select: { code: true, credits: true } }, lecturer: { select: { id: true } } } },
         _count: { select: { slots: true } },
       },
     });
@@ -82,6 +83,9 @@ export async function timetableRoutes(app: FastifyInstance) {
 
     // Final-year groups (semesters 5-6) finish by 10:00 on an early grid; nobody gets a gap over two hours.
     const finalYear = isFinalYearSemester(semester.number);
+    // Part-time hours and standing commitments: time these teachers simply do not have.
+    const unavailable = (await prisma.teacherUnavailability.findMany({ select: { teacherId: true, dayOfWeek: true, startTime: true, endTime: true } }));
+
     const result = generateTimetable(
       semester.intake.sections.map((s) => ({
         id: s.id,
@@ -91,16 +95,24 @@ export async function timetableRoutes(app: FastifyInstance) {
         latestEnd: finalYear ? '10:00' : undefined,
         maxGapMinutes: DEFAULT_MAX_GAP_MIN,
       })),
-      semester.offerings.map((o) => ({ id: o.id, code: o.module.code, teacherId: o.lecturerId!, sessionsPerWeek })),
-      rooms.map((r) => ({ id: r.id, name: r.name, capacity: r.rows * r.cols })),
+      semester.offerings.map((o) => ({ id: o.id, code: o.module.code, teacherId: o.lecturerId!, teacherIds: [o.lecturerId, o.coLecturerId].filter((x): x is string => Boolean(x)), credits: o.module.credits, sessionsPerWeek })),
+      rooms.map((r) => ({ id: r.id, name: r.name, capacity: r.rows * r.cols, roomType: r.roomType })),
       undefined,
       concurrent,
+      unavailable,
     );
     const sectionName = new Map(semester.intake.sections.map((s) => [s.id, s.name]));
     const moduleCode = new Map(semester.offerings.map((o) => [o.id, o.module.code]));
     await prisma.$transaction(async (tx) => {
       await tx.timetableSlot.deleteMany({ where: { semesterId } });
-      await tx.timetableSlot.createMany({ data: result.slots.map((s) => ({ semesterId, sectionId: s.sectionId, moduleOfferingId: s.offeringId, teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, weekFrom: 1, weekTo: semester.teachingWeeks })) });
+      const ids = result.slots.map(() => randomUUID());
+      await tx.timetableSlot.createMany({ data: result.slots.map((s, i) => ({ id: ids[i], semesterId, sectionId: s.sectionId, moduleOfferingId: s.offeringId, teacherId: s.teacherId, venueId: s.venueId, kind: s.kind, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, weekFrom: 1, weekTo: semester.teachingWeeks })) });
+      // A lecture belongs to every group in the room, not just the first one.
+      const pairs = result.slots.flatMap((s, i) => s.groupIds.map((g) => ({ A: g, B: ids[i] })));
+      for (let i = 0; i < pairs.length; i += 500) {
+        const chunk = pairs.slice(i, i + 500);
+        await tx.$executeRawUnsafe(`INSERT INTO "_SlotGroups" ("A","B") VALUES ${chunk.map((_, j) => `($${j * 2 + 1},$${j * 2 + 2})`).join(',')} ON CONFLICT DO NOTHING`, ...chunk.flatMap((p) => [p.A, p.B]));
+      }
       await audit(tx, { ...actorOf(req), action: 'timetable.generate', entityType: 'Semester', entityId: semesterId, after: { slots: result.slots.length, unplaced: result.unplaced.length, gapViolations: result.gapViolations.length, sessionsPerWeek, finalYear } });
     });
     return {
@@ -155,10 +167,11 @@ export async function timetableRoutes(app: FastifyInstance) {
     });
   }
 
-  async function assertNoClash(data: { semesterId: string; sectionId: string; teacherId: string; venueId: string | null; dayOfWeek: number; startTime: string; endTime: string }, excludeId?: string) {
+  async function assertNoClash(data: { semesterId: string; sectionId: string; teacherId: string; venueId: string | null; dayOfWeek: number; startTime: string; endTime: string }, excludeId?: string, alsoExclude: string[] = []) {
     if (toMinutes(data.endTime) <= toMinutes(data.startTime)) throw badRequest('endTime must be after startTime');
+    const ignore = [excludeId, ...alsoExclude].filter((x): x is string => Boolean(x));
     const others = await prisma.timetableSlot.findMany({
-      where: { dayOfWeek: data.dayOfWeek, NOT: excludeId ? { id: excludeId } : undefined, OR: [{ teacherId: data.teacherId }, { sectionId: data.sectionId }, ...(data.venueId ? [{ venueId: data.venueId }] : [])] },
+      where: { dayOfWeek: data.dayOfWeek, NOT: ignore.length ? { id: { in: ignore } } : undefined, OR: [{ teacherId: data.teacherId }, { sectionId: data.sectionId }, ...(data.venueId ? [{ venueId: data.venueId }] : [])] },
       include: { section: { select: { name: true } }, teacher: { select: { name: true } }, venue: { select: { name: true } }, moduleOffering: { select: { module: { select: { code: true } } } } },
     });
     const clashes = findClashes([{ id: 'new', ...data }, ...others.map((o) => ({ id: o.id, sectionId: o.sectionId, teacherId: o.teacherId, venueId: o.venueId, dayOfWeek: o.dayOfWeek, startTime: o.startTime, endTime: o.endTime }))]).filter((c) => c.a === 'new' || c.b === 'new');
@@ -213,6 +226,57 @@ export async function timetableRoutes(app: FastifyInstance) {
       await notifyUsers(prisma, [body.teacherId, before.teacherId], { type: 'timetable.teacher_changed', title: `Teaching change: ${after.moduleOffering.module.code} section ${after.section.name}`, body: `${after.teacher.name} now teaches this class (${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][after.dayOfWeek - 1]} ${after.startTime}).`, payload: { slotId: id } });
     }
     return after;
+  });
+
+  /**
+   * Combine classes into one.
+   *
+   * Five groups being taught the same thing separately is five rooms and five hours of a
+   * lecturer's week for one lecture. Merging them keeps every group in the timetable but books
+   * the room once, which is how a cohort lecture is written on the real sheet.
+   */
+  app.post('/timetable/slots/combine', { preHandler: [allow('timetable.write')] }, async (req) => {
+    const { slotIds, venueId } = parse(z.object({ slotIds: z.array(z.string()).min(2).max(20), venueId: z.string().optional() }), req.body);
+    const slots = await prisma.timetableSlot.findMany({ where: { id: { in: slotIds } }, include: { ...slotInclude, groups: { select: { id: true, name: true } } } });
+    if (slots.length !== slotIds.length) throw notFound('One of those classes no longer exists');
+
+    const first = slots[0];
+    const sameModule = slots.every((s) => s.moduleOfferingId === first.moduleOfferingId);
+    if (!sameModule) throw badRequest('Only classes of the same module can be combined');
+    const sameSemester = slots.every((s) => s.semesterId === first.semesterId);
+    if (!sameSemester) throw badRequest('Those classes belong to different semesters');
+    if (!slots.every((s) => s.kind === first.kind)) throw badRequest('Combine classes of the same kind — a lecture with a lecture, not a lecture with a lab');
+
+    // Everyone ends up in one room at one time, so the room has to hold all of them.
+    const groupIds = [...new Set(slots.flatMap((s) => [s.sectionId, ...s.groups.map((g) => g.id)]))];
+    const headcount = await prisma.student.count({ where: { sectionId: { in: groupIds }, deletedAt: null } });
+    const targetVenueId = venueId ?? first.venueId;
+    if (!targetVenueId) throw badRequest('Choose a room for the combined class');
+    const venue = await prisma.venue.findUnique({ where: { id: targetVenueId } });
+    if (!venue) throw notFound('Room not found');
+    const seats = venue.rows * venue.cols - ((venue.disabledSeats as unknown[]) ?? []).length;
+    if (seats < headcount) throw conflict(`${venue.name} seats ${seats}; the combined class is ${headcount} students. Pick a bigger room.`, { headcount, seats });
+
+    // Keep the earliest slot, fold the rest into it, then check the result like any other move.
+    const keep = [...slots].sort((a, b) => a.dayOfWeek - b.dayOfWeek || toMinutes(a.startTime) - toMinutes(b.startTime))[0];
+    const drop = slots.filter((s) => s.id !== keep.id);
+    await assertNoClash(
+      { semesterId: keep.semesterId, sectionId: keep.sectionId, teacherId: keep.teacherId, venueId: targetVenueId, dayOfWeek: keep.dayOfWeek, startTime: keep.startTime, endTime: keep.endTime },
+      keep.id,
+      drop.map((d) => d.id),
+    );
+
+    const after = await prisma.$transaction(async (tx) => {
+      await tx.timetableSlot.deleteMany({ where: { id: { in: drop.map((d) => d.id) } } });
+      return tx.timetableSlot.update({
+        where: { id: keep.id },
+        data: { venueId: targetVenueId, groups: { connect: groupIds.map((id) => ({ id })) } },
+        include: { ...slotInclude, groups: { select: { id: true, name: true } } },
+      });
+    });
+    await audit(prisma, { ...actorOf(req), action: 'timetable.slot.combine', entityType: 'TimetableSlot', entityId: keep.id, after: { merged: drop.length + 1, groups: after.groups.map((g) => g.name), room: venue.name, headcount } });
+    await notifyUsers(prisma, [keep.teacherId], { type: 'timetable.combined', title: `${after.moduleOffering.module.code} is now one class`, body: `${after.groups.map((g) => g.name).join('+')} together in ${venue.name}, ${keep.startTime}–${keep.endTime}.`, payload: { slotId: keep.id } });
+    return { ...after, headcount, seats };
   });
 
   app.delete('/timetable/slots/:id', { preHandler: [allow('timetable.write')] }, async (req) => {

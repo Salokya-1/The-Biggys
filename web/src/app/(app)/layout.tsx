@@ -33,6 +33,7 @@ const NAV: NavItem[] = [
   { href: '/exams', label: 'Exams', icon: CalendarDays, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/requests', label: 'Requests', icon: Inbox, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/alerts', label: 'Class alerts', icon: TriangleAlert, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'timetable.read' },
+  { href: '/teachers', label: 'Teachers', icon: GraduationCap, roles: ['ADMIN', 'MODULE_LEADER'], needs: 'timetable.read' },
   { href: '/venues', label: 'Rooms', icon: Building2, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'seating.read' },
   { href: '/camera', label: 'Camera access', icon: Video, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'camera.read' },
   { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'fees.read' },

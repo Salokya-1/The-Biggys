@@ -41,6 +41,7 @@ export const ACTIONS = [
   { key: 'audit.read', label: 'Read the audit log', group: 'Administration', roles: ['ADMIN'] },
   { key: 'users.manage', label: 'Manage users, roles and permissions', group: 'Administration', roles: ['ADMIN'] },
   { key: 'retakes.run', label: 'Generate summer retakes', group: 'Administration', roles: ['ADMIN'] },
+  { key: 'teacher.availability', label: 'Record my unavailable hours', group: 'Timetable', roles: ['LECTURER', 'MODULE_LEADER', 'ADMIN'] },
   { key: 'camera.read', label: 'See camera access requests', group: 'Exams', roles: ['ADMIN', 'MODULE_LEADER'] },
   { key: 'camera.request', label: 'Ask IT support for camera access', group: 'Exams', roles: ['ADMIN'] },
   { key: 'assistant.use', label: 'Use the AI assistant', group: 'Administration', roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
