@@ -135,6 +135,13 @@ async function main() {
     const examEnd = new Date(examStart.getTime() + 2 * week);
     return { start, end: examEnd, examStart, examEnd, term: n % 2 === 1 ? ('AUTUMN' as const) : ('SPRING' as const) };
   };
+  /**
+   * Groups are named the way the live allocation sheet names them: the programme's letter plus a
+   * number, so C1…C8 are Computing groups and N1…N8 Networking ones. That is what appears on a
+   * lecture row as "C1+C2+…" and on a workshop row as a single group.
+   */
+  const GROUP_PREFIX: Record<string, string> = { BSCC: 'C', BSCAI: 'AI', BSCNIS: 'N', BSCMT: 'M', BABA: 'B', BAAF: 'AF' };
+
   // Every intake runs as 8 sections of 20 — the shape RTE actually timetables against.
   const SECTION_SIZE = 20;
   const SECTIONS_PER_INTAKE = 8;
@@ -434,9 +441,10 @@ async function main() {
 
       // 8 sections of 20 (A … H)
       const size = COHORT_SIZE;
+      const groupName = (i: number) => `${GROUP_PREFIX[p.code] ?? 'G'}${i + 1}`;
       const sections = Array.from({ length: SECTIONS_PER_INTAKE }, () => randomUUID());
-      await prisma.section.createMany({ data: sections.map((id, s) => ({ id, intakeId: intake.id, name: String.fromCharCode(65 + s) })) });
-      sectionsByIntake.set(intake.id, sections.map((id, i) => ({ id, name: String.fromCharCode(65 + i), size: SECTION_SIZE })));
+      await prisma.section.createMany({ data: sections.map((id, s) => ({ id, intakeId: intake.id, name: groupName(s) })) });
+      sectionsByIntake.set(intake.id, sections.map((id, i) => ({ id, name: groupName(i), size: SECTION_SIZE })));
 
       // Students are written in bulk: 160 per intake is far too many round trips one at a time.
       const cohort: typeof allStudents = [];
@@ -652,25 +660,28 @@ async function main() {
   const lb101 = await prisma.venue.create({ data: { name: 'LB-101', building: 'London Block', rows: 8, cols: 10, adjacencyMode: 'ROW_AND_COLUMN', disabledSeats: [{ row: 1, col: 10 }, { row: 8, col: 1 }] } });
   const kumari = await prisma.venue.create({ data: { name: 'Kumari Hall', building: 'Main Block', rows: 12, cols: 14, adjacencyMode: 'ROW', disabledSeats: [{ row: 6, col: 7 }, { row: 6, col: 8 }, { row: 12, col: 14 }], isClassroom: false } });
   const lab3 = await prisma.venue.create({ data: { name: 'Lab 3', building: 'London Block', rows: 5, cols: 8, adjacencyMode: 'ROW_AND_COLUMN', disabledSeats: [] } });
-  // Classrooms for the timetable. 96 sections × ~13 sessions a week need real room stock, so the
-  // campus is modelled as four blocks of teaching rooms seating 25 each.
-  const blocks = [
-    { prefix: 'LB', building: 'London Block', floors: [1, 2, 3] },
-    { prefix: 'MB', building: 'Main Block', floors: [1, 2, 3] },
-    { prefix: 'NB', building: 'New Block', floors: [1, 2, 3] },
-    { prefix: 'TB', building: 'Tech Block', floors: [1, 2] },
+  /**
+   * The teaching estate, named as Islington's own allocation sheet names it: blocks (Kumari,
+   * Alumni, Nepal, Skill, London, A Level) holding halls, lecture theatres, seminar rooms,
+   * tutorial rooms and labs. The room type is what decides where a class can go — a lecture needs
+   * a hall, a workshop a lab — so it is stored rather than inferred from the name.
+   */
+  type RoomSpec = { name: string; building: string; roomType: 'HALL' | 'LECTURE_THEATRE' | 'TUTORIAL_ROOM' | 'SEMINAR_ROOM' | 'LAB'; rows: number; cols: number };
+  const estate: RoomSpec[] = [
+    { name: 'Hall - 01', building: 'Kumari', roomType: 'HALL', rows: 14, cols: 16 },
+    { name: 'Hall - 02', building: 'Kumari', roomType: 'HALL', rows: 14, cols: 16 },
+    ...['Tridev Gurung', 'Amir Khadka', 'Chhitesh Lal Shrestha', 'Naresh Lamgade'].map((who, i) => ({ name: `LT0${i + 4} - ${who}`, building: 'Alumni', roomType: 'LECTURE_THEATRE' as const, rows: 12, cols: 15 })),
+    ...['Buckingham Palace', 'Kensington Palace', 'Westminster Palace'].map((who, i) => ({ name: `LT0${i + 1} - ${who}`, building: 'London', roomType: 'LECTURE_THEATRE' as const, rows: 12, cols: 15 })),
+    ...['LT - 11', 'LT - 12', 'LT - 13'].map((name) => ({ name, building: 'A Level', roomType: 'LECTURE_THEATRE' as const, rows: 12, cols: 15 })),
+    ...['Sajiya Gurung', 'Simran Bhattarai', 'Samir Gautam', 'Rotash Shrestha', 'Anish Thapa', 'Nirajan Basnet'].map((who, i) => ({ name: `SR0${i + 5} - ${who}`, building: 'Alumni', roomType: 'SEMINAR_ROOM' as const, rows: 5, cols: 6 })),
+    ...['Tower Bridge', 'Trafalgar Square', 'Piccadilly Circus'].map((who, i) => ({ name: `SR0${i + 1} - ${who}`, building: 'London', roomType: 'SEMINAR_ROOM' as const, rows: 5, cols: 6 })),
+    ...['Kantipur', 'Patan', 'Pokhara', 'Lumbini', 'Machapuchare', 'Annapurna', 'Kanchanjunga'].map((who, i) => ({ name: `TR0${i + 1} - ${who}`, building: 'Nepal', roomType: 'TUTORIAL_ROOM' as const, rows: 5, cols: 6 })),
+    ...Array.from({ length: 8 }, (_, i) => ({ name: `TR - ${i + 10}`, building: 'A Level', roomType: 'TUTORIAL_ROOM' as const, rows: 5, cols: 6 })),
+    ...['Sarun Dahal', 'Sangay Lama', 'Srijan Ghimire', 'Prajwol Adhikari', 'Pratima Giri', 'Anew Karki', 'Rupesh Dangol', 'Vijay Pathak', 'Shishir Tamrakar', 'Pranjal Deep Kane', 'Dorjee Khando Lama', 'Jagaran Maharjan'].map((who, i) => ({ name: `Lab ${String(i + 1).padStart(2, '0')} - ${who}`, building: 'Skill', roomType: 'LAB' as const, rows: 5, cols: 5 })),
   ];
-  const classroomRows: { name: string; building: string; rows: number; cols: number; adjacencyMode: 'ROW'; disabledSeats: [] }[] = [];
-  for (const b of blocks) {
-    for (const floor of b.floors) {
-      for (let n = 1; n <= 6; n++) {
-        const name = `${b.prefix}-${floor}${String(n).padStart(2, '0')}`;
-        if (name === 'LB-101') continue; // already an exam room
-        classroomRows.push({ name, building: b.building, rows: 5, cols: 5, adjacencyMode: 'ROW', disabledSeats: [] });
-      }
-    }
-  }
-  await prisma.venue.createMany({ data: classroomRows });
+  await prisma.venue.createMany({
+    data: estate.map((r) => ({ name: r.name, building: r.building, roomType: r.roomType, rows: r.rows, cols: r.cols, adjacencyMode: 'ROW' as const, disabledSeats: [], isClassroom: true })),
+  });
   await prisma.venue.create({ data: { name: 'Auditorium', building: 'Main Block', rows: 15, cols: 16, adjacencyMode: 'ROW', disabledSeats: [], isClassroom: false } });
 
   const sem2Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2025' && o.sem === 2);
@@ -724,7 +735,7 @@ async function main() {
   // ---------- weekly routines for every semester now in progress (clash-free across all of them) ----------
   {
     const classrooms = await prisma.venue.findMany({ where: { isClassroom: true } });
-    const rooms = classrooms.map((r) => ({ id: r.id, name: r.name, capacity: r.rows * r.cols }));
+    const rooms = classrooms.map((r) => ({ id: r.id, name: r.name, capacity: r.rows * r.cols, roomType: r.roomType }));
     const existing: ExistingBooking[] = [];
     let totalSlots = 0;
     for (const sem of currentSemesters) {
@@ -740,7 +751,14 @@ async function main() {
         undefined,
         existing,
       );
-      await prisma.timetableSlot.createMany({ data: r.slots.map((s) => ({ semesterId: sem.id, sectionId: s.sectionId, moduleOfferingId: s.offeringId, teacherId: s.teacherId, venueId: s.venueId, kind: s.kind as ClassKind, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, weekFrom: 1, weekTo: 12 })) });
+      const slotIds = r.slots.map(() => randomUUID());
+      await prisma.timetableSlot.createMany({ data: r.slots.map((s, i) => ({ id: slotIds[i], semesterId: sem.id, sectionId: s.sectionId, moduleOfferingId: s.offeringId, teacherId: s.teacherId, venueId: s.venueId, kind: s.kind as ClassKind, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, weekFrom: 1, weekTo: 12 })) });
+      // The groups in the room: a lecture carries the whole cohort, an applied hour just its own.
+      const pairs = r.slots.flatMap((s, i) => s.groupIds.map((g) => ({ A: g, B: slotIds[i] })));
+      for (let i = 0; i < pairs.length; i += 500) {
+        const chunk = pairs.slice(i, i + 500);
+        await prisma.$executeRawUnsafe(`INSERT INTO "_SlotGroups" ("A","B") VALUES ${chunk.map((_, j) => `($${j * 2 + 1},$${j * 2 + 2})`).join(',')} ON CONFLICT DO NOTHING`, ...chunk.flatMap((p) => [p.A, p.B]));
+      }
       existing.push(...r.slots.map((s) => ({ teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })));
       totalSlots += r.slots.length;
       if (r.unplaced.length) {

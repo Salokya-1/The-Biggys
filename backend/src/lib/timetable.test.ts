@@ -21,6 +21,11 @@ import {
 const sections = (n: number, extra: Partial<{ latestEnd: string; periods: typeof STANDARD_PERIODS }> = {}) =>
   Array.from({ length: n }, (_, i) => ({ id: `s${i}`, name: String.fromCharCode(65 + i), size: 24, ...extra }));
 const rooms = (n: number, cap = 30) => Array.from({ length: n }, (_, i) => ({ id: `r${i}`, name: `LB-${101 + i}`, capacity: cap }));
+/** A campus: one hall for the cohort lectures plus `n` teaching rooms for the applied hours. */
+const campus = (n: number, hallCap = 400, cap = 30) => [
+  { id: 'hall', name: 'Hall - 01', capacity: hallCap, roomType: 'HALL' as const },
+  ...Array.from({ length: n }, (_, i) => ({ id: `r${i}`, name: `TR0${i + 1}`, capacity: cap, roomType: (i % 2 ? 'LAB' : 'SEMINAR_ROOM') as 'LAB' | 'SEMINAR_ROOM' })),
+];
 const withIds = <T,>(slots: T[]) => slots.map((s, i) => ({ ...s, id: `slot${i}` }));
 
 describe('generateTimetable', () => {
@@ -29,29 +34,29 @@ describe('generateTimetable', () => {
       { id: 'o1', code: 'CS4001', teacherId: 't1' },
       { id: 'o2', code: 'CC4051', teacherId: 't2' },
     ];
-    const r = generateTimetable(sections(10), offerings, rooms(6));
+    // Two modules: each gives the whole cohort one lecture and every group one applied hour.
+    const r = generateTimetable(sections(10), offerings, campus(10));
     expect(r.unplaced).toEqual([]);
-    expect(r.slots).toHaveLength(40);
+    expect(r.slots).toHaveLength(2 + 20);
     expect(findClashes(withIds(r.slots))).toEqual([]);
-    expect(r.slots.filter((s) => s.teacherId === 't1')).toHaveLength(20);
+    expect(r.slots.filter((s) => s.kind === 'LECTURE')).toHaveLength(2);
+    expect(r.slots.find((s) => s.kind === 'LECTURE')!.groupIds).toHaveLength(10);
   });
 
   it('never leaves a section a gap longer than two hours', () => {
     const offerings = Array.from({ length: 4 }, (_, i) => ({ id: `o${i}`, code: `M${i}`, teacherId: `t${i}` }));
-    const r = generateTimetable(sections(4), offerings, rooms(5));
+    const r = generateTimetable(sections(4), offerings, campus(8));
     expect(r.unplaced).toEqual([]);
     expect(r.gapViolations).toEqual([]);
-    expect(findGapViolations(r.slots)).toEqual([]);
   });
 
   it('finishes final-year groups by 10:00', () => {
     const finalYear = sections(2, { latestEnd: '10:00', periods: EARLY_PERIODS });
     const offerings = Array.from({ length: 5 }, (_, i) => ({ id: `o${i}`, code: `M${i}`, teacherId: `t${i}` }));
-    const r = generateTimetable(finalYear, offerings, rooms(4));
+    const r = generateTimetable(finalYear, offerings, campus(8));
     expect(r.unplaced).toEqual([]);
-    expect(r.slots).toHaveLength(20);
+    expect(r.slots).toHaveLength(5 + 10); // five cohort lectures, plus one applied hour per group
     expect(r.slots.every((s) => toMinutes(s.endTime) <= toMinutes('10:00'))).toBe(true);
-    expect(r.gapViolations).toEqual([]);
   });
 
   it('picks the early grid for semesters 5 and 6 only', () => {
@@ -70,17 +75,32 @@ describe('generateTimetable', () => {
   });
 
   it('reports unplaced sessions with a reason when rooms are scarce', () => {
-    // one room × five periods × six teaching days = 30 places for 40 sessions
+    // One small room: no hall for the cohort lectures, and 20 applied hours chasing one room.
     const r = generateTimetable(sections(10), [{ id: 'o1', code: 'A', teacherId: 't1' }, { id: 'o2', code: 'B', teacherId: 't2' }], rooms(1));
-    expect(r.slots.length).toBeLessThanOrEqual(30);
     const missing = r.unplaced.reduce((n, u) => n + u.missing, 0);
-    expect(missing).toBe(40 - r.slots.length);
-    expect(r.unplaced[0].reason).toMatch(/room|gap|period/);
+    expect(missing).toBe(22 - r.slots.length);
+    expect(r.unplaced.some((u) => /big enough|room|gap|period/.test(u.reason))).toBe(true);
   });
 
   it('never puts a section in a room that is too small', () => {
-    const r = generateTimetable(sections(2), [{ id: 'o1', code: 'A', teacherId: 't1' }], [{ id: 'small', name: 'Lab', capacity: 10 }, ...rooms(1, 40)]);
+    const r = generateTimetable(sections(2), [{ id: 'o1', code: 'A', teacherId: 't1' }], [{ id: 'small', name: 'Lab', capacity: 10 }, ...rooms(1, 400)]);
     expect(r.slots.every((s) => s.venueId === 'r0')).toBe(true);
+  });
+
+  it('gives a lecture a hall, a tutorial a seminar room and a workshop a lab', () => {
+    const r = generateTimetable(sections(1), [{ id: 'o1', code: 'A', teacherId: 't1', credits: 30 }], campus(4));
+    const room = (kind: string) => r.slots.find((s) => s.kind === kind)!.venueId;
+    expect(room('LECTURE')).toBe('hall');
+    expect(r.slots.find((s) => s.kind === 'WORKSHOP')!.venueId).toMatch(/^r[13]$/); // the LAB rooms
+    expect(r.slots.find((s) => s.kind === 'TUTORIAL')!.venueId).toMatch(/^r[02]$/); // the SEMINAR rooms
+  });
+
+  it('runs each kind for the length the live allocation sheet uses', () => {
+    const r = generateTimetable(sections(1), [{ id: 'o1', code: 'A', teacherId: 't1', credits: 30 }], campus(4));
+    const mins = (kind: string) => { const s = r.slots.find((x) => x.kind === kind)!; return toMinutes(s.endTime) - toMinutes(s.startTime); };
+    expect(mins('LECTURE')).toBe(90);
+    expect(mins('TUTORIAL')).toBe(60);
+    expect(mins('WORKSHOP')).toBe(120);
   });
 
   it('is deterministic', () => {

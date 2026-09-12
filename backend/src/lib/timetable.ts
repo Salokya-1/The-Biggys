@@ -20,6 +20,22 @@
  * never dropped silently.
  */
 
+/** What a room is for. Matches the room types on Islington's own allocation sheet. */
+export type RoomType = 'HALL' | 'LECTURE_THEATRE' | 'TUTORIAL_ROOM' | 'SEMINAR_ROOM' | 'LAB';
+
+/**
+ * How long each kind of class runs, and where it can be held.
+ *
+ * Taken from the live allocation sheet: a lecture is 90 minutes for the whole cohort in a hall or
+ * lecture theatre, a tutorial is one hour for a single group in a seminar or tutorial room, and a
+ * workshop is two hours for a single group in a lab. Rooms are listed best-first.
+ */
+export const SESSION: Record<ClassKind, { minutes: number; rooms: RoomType[]; wholeCohort: boolean }> = {
+  LECTURE: { minutes: 90, rooms: ['HALL', 'LECTURE_THEATRE'], wholeCohort: true },
+  TUTORIAL: { minutes: 60, rooms: ['SEMINAR_ROOM', 'TUTORIAL_ROOM', 'LECTURE_THEATRE'], wholeCohort: false },
+  WORKSHOP: { minutes: 120, rooms: ['LAB', 'TUTORIAL_ROOM', 'SEMINAR_ROOM'], wholeCohort: false },
+};
+
 /** A class kind. Lectures are whole-section; tutorials and workshops are the applied hours. */
 export type ClassKind = 'LECTURE' | 'TUTORIAL' | 'WORKSHOP';
 export const CLASS_KINDS: readonly ClassKind[] = ['LECTURE', 'TUTORIAL', 'WORKSHOP'];
@@ -90,10 +106,13 @@ export interface TtRoom {
   id: string;
   name: string;
   capacity: number;
+  roomType?: RoomType;
 }
 
 export interface TtSlot {
   sectionId: string;
+  /** Every group in the room: the whole cohort for a lecture, one group otherwise. */
+  groupIds: string[];
   offeringId: string;
   kind: ClassKind;
   teacherId: string;
@@ -111,6 +130,28 @@ export interface TtResult {
 
 const grid = (times: [string, string][]): Period[] =>
   TEACHING_DAYS.flatMap((day) => times.map(([startTime, endTime]) => ({ dayOfWeek: day, startTime, endTime })));
+
+/**
+ * Classes start on the half hour from 06:30 to 16:30, as they do on the live sheet — the early
+ * starts are what lets one campus run three years of every programme through the same rooms.
+ */
+export const DAY_FIRST_START = '06:30';
+export const DAY_LAST_END = '17:30';
+export const startTimes = (first = DAY_FIRST_START, lastEnd = DAY_LAST_END, stepMin = 30): string[] => {
+  const out: string[] = [];
+  for (let m = toMinutes(first); m + stepMin <= toMinutes(lastEnd); m += stepMin) out.push(fromMinutes(m));
+  return out;
+};
+
+/** The periods a class of this kind could occupy on the given days. */
+export function periodsForKind(kind: ClassKind, days: number[], first = DAY_FIRST_START, lastEnd = DAY_LAST_END): Period[] {
+  const { minutes } = SESSION[kind];
+  return days.flatMap((dayOfWeek) =>
+    startTimes(first, lastEnd)
+      .filter((s) => toMinutes(s) + minutes <= toMinutes(lastEnd))
+      .map((startTime) => ({ dayOfWeek, startTime, endTime: fromMinutes(toMinutes(startTime) + minutes) })),
+  );
+}
 
 /** Standard day: five 90-minute blocks from 08:00 to 17:15. */
 export const STANDARD_PERIODS: Period[] = grid([
@@ -231,70 +272,92 @@ export function generateTimetable(
     if (b.sectionId) sectionBusy.add(b.sectionId, i);
   }
 
-  const orderedRooms = [...rooms].sort((a, b) => a.capacity - b.capacity || a.name.localeCompare(b.name)); // smallest fitting room first
-  const orderedSections = [...sections].sort((a, b) => a.name.localeCompare(b.name));
+  const orderedSections = [...sections].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   const orderedOfferings = [...offerings].sort((a, b) => a.code.localeCompare(b.code));
+  const cohortSize = orderedSections.reduce((n, s) => n + s.size, 0);
+  const year = orderedSections.find((s) => s.year)?.year;
+  const latestEnd = orderedSections.find((s) => s.latestEnd)?.latestEnd;
+  const dayEnd = latestEnd ?? DAY_LAST_END;
 
-  orderedSections.forEach((section, si) => {
-    const periods = (section.periods ?? periodsOrUndefined ?? STANDARD_PERIODS).filter((p) => !section.latestEnd || toMinutes(p.endTime) <= toMinutes(section.latestEnd));
-    const maxGap = section.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN;
-    const year = section.year;
-
-    orderedOfferings.forEach((offering, oi) => {
-      // Two teachers share a module: section A goes to the first, B to the second, and so on.
-      const pool = offering.teacherIds?.length ? offering.teacherIds : [offering.teacherId];
-      const teacherId = pool[si % pool.length];
-      const kinds = offering.sessions ?? sessionsFor(offering.credits, oi);
-
-      kinds.forEach((kind, ki) => {
-        // A kind is pinned to its year's two days; without a year every working day is allowed.
-        const allowed = year ? daysFor(year, kind) : TEACHING_DAYS;
-        const onPattern = periods.filter((p) => allowed.includes(p.dayOfWeek));
-        const usedDays = new Set<number>();
-        let placed = 0;
-        let blocked = 'no free period with a room, teacher and section all available';
-        const need = 1;
-
-        // pass 1: stay on the year's days for this kind and keep the day compact;
-        // pass 2: same days, allow a longer gap; pass 3: any working day (reported as off-pattern).
-        for (const [pool2, respectGap] of [[onPattern, true], [onPattern, false], [periods, false]] as const) {
-          if (!pool2.length) continue;
-          const start = (si * 3 + oi * 7 + ki * 5) % pool2.length;
-          for (let i = 0; i < pool2.length && placed < need; i++) {
-            const p = pool2[(start + i) % pool2.length];
-            if (usedDays.has(p.dayOfWeek)) continue;
-            if (sectionBusy.busy(section.id, p)) continue;
-            if (teacherBusy.busy(teacherId, p)) continue;
-            if (respectGap && breaksGapRule(sectionBusy.get(section.id), p, maxGap)) {
-              blocked = `only periods that would leave a gap longer than ${maxGap / 60} h were free`;
-              continue;
-            }
-            const room = orderedRooms.find((r) => r.capacity >= section.size && !roomBusy.busy(r.id, p));
-            if (!room) {
-              blocked = 'no room of the right size was free';
-              continue;
-            }
-            slots.push({ sectionId: section.id, offeringId: offering.id, kind, teacherId, venueId: room.id, dayOfWeek: p.dayOfWeek, startTime: p.startTime, endTime: p.endTime });
-            sectionBusy.add(section.id, p);
-            teacherBusy.add(teacherId, p);
-            roomBusy.add(room.id, p);
-            placed++;
-          }
-          if (placed >= need) break;
-        }
-        if (placed < need) unplaced.push({ sectionId: section.id, offeringId: offering.id, kind, missing: need - placed, reason: blocked });
+  /** Rooms that suit this kind of class and hold this many people, best fit first. */
+  const roomsFor = (kind: ClassKind, size: number) => {
+    const wanted = SESSION[kind].rooms;
+    return [...rooms]
+      .filter((r) => r.capacity >= size)
+      .filter((r) => !r.roomType || wanted.includes(r.roomType))
+      .sort((a, b) => {
+        const rank = (r: TtRoom) => (r.roomType ? wanted.indexOf(r.roomType) : wanted.length);
+        return rank(a) - rank(b) || a.capacity - b.capacity || a.name.localeCompare(b.name);
       });
-    });
+  };
+
+  /** Try to book one session; returns true when it lands. */
+  const place = (kind: ClassKind, offering: TtOffering, teacherId: string, groups: TtSection[], salt: number): { ok: true } | { ok: false; reason: string } => {
+    const days = year ? daysFor(year, kind) : TEACHING_DAYS;
+    const size = groups.reduce((n, s) => n + s.size, 0);
+    const candidateRooms = roomsFor(kind, size);
+    if (!candidateRooms.length) return { ok: false, reason: `no ${SESSION[kind].rooms[0].toLowerCase().replace('_', ' ')} big enough for ${size} students` };
+    const maxGap = groups[0]?.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN;
+    let reason = 'no free period with a room, teacher and groups all available';
+
+    // pass 1: this kind's own days, compact; pass 2: same days, allow a longer gap;
+    // pass 3: any working day — reported, because it is off the year's pattern.
+    for (const [allowedDays, respectGap] of [[days, true], [days, false], [TEACHING_DAYS, false]] as const) {
+      const periods = periodsForKind(kind, [...allowedDays], DAY_FIRST_START, dayEnd);
+      if (!periods.length) continue;
+      const from = salt % periods.length;
+      for (let i = 0; i < periods.length; i++) {
+        const p = periods[(from + i) % periods.length];
+        if (groups.some((g) => sectionBusy.busy(g.id, p))) continue;
+        if (teacherBusy.busy(teacherId, p)) continue;
+        if (respectGap && groups.some((g) => breaksGapRule(sectionBusy.get(g.id), p, maxGap))) {
+          reason = `only periods that would leave a gap longer than ${maxGap / 60} h were free`;
+          continue;
+        }
+        const room = candidateRooms.find((r) => !roomBusy.busy(r.id, p));
+        if (!room) {
+          reason = 'no room of the right kind was free';
+          continue;
+        }
+        slots.push({ sectionId: groups[0].id, groupIds: groups.map((g) => g.id), offeringId: offering.id, kind, teacherId, venueId: room.id, dayOfWeek: p.dayOfWeek, startTime: p.startTime, endTime: p.endTime });
+        for (const g of groups) sectionBusy.add(g.id, p);
+        teacherBusy.add(teacherId, p);
+        roomBusy.add(room.id, p);
+        return { ok: true };
+      }
+    }
+    return { ok: false, reason };
+  };
+
+  orderedOfferings.forEach((offering, oi) => {
+    const pool = offering.teacherIds?.length ? offering.teacherIds : [offering.teacherId];
+    const kinds = offering.sessions ?? sessionsFor(offering.credits, oi);
+
+    for (const kind of kinds) {
+      if (SESSION[kind].wholeCohort) {
+        // One lecture for the whole cohort, the way the live sheet writes C1+C2+…+C7.
+        if (!orderedSections.length) continue;
+        const r = place(kind, offering, pool[0], orderedSections, oi * 7 + 3);
+        if (!r.ok) unplaced.push({ sectionId: orderedSections[0].id, offeringId: offering.id, kind, missing: 1, reason: r.reason });
+        continue;
+      }
+      // Tutorials and workshops run per group, shared between the module's two teachers.
+      orderedSections.forEach((section, si) => {
+        const teacherId = pool[si % pool.length];
+        const r = place(kind, offering, teacherId, [section], si * 3 + oi * 7);
+        if (!r.ok) unplaced.push({ sectionId: section.id, offeringId: offering.id, kind, missing: 1, reason: r.reason });
+      });
+    }
   });
 
-  // The fallback passes can leave a hole in a section's day. The two-hour rule is a promise to
-  // students rather than a preference, so pull those classes earlier where the section, the
+  // The fallback passes can leave a hole in a group's day. The two-hour rule is a promise to
+  // students rather than a preference, so pull those classes earlier where the group, the
   // teacher and a room are all free. Moves stay on the same day, so the year's pattern holds.
   compactGaps(slots, sections, rooms, periodsOrUndefined, existing);
 
   const ordered = slots.sort((a, b) => a.dayOfWeek - b.dayOfWeek || toMinutes(a.startTime) - toMinutes(b.startTime) || a.sectionId.localeCompare(b.sectionId));
   const gapMap = new Map(sections.map((s) => [s.id, s.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN]));
-  const gapViolations = findGapViolations(ordered).filter((v) => v.gapMinutes > (gapMap.get(v.sectionId) ?? DEFAULT_MAX_GAP_MIN));
+  const gapViolations = findGapViolations(ordered.flatMap((s) => s.groupIds.map((g) => ({ ...s, sectionId: g })))).filter((v) => v.gapMinutes > (gapMap.get(v.sectionId) ?? DEFAULT_MAX_GAP_MIN));
   return { slots: ordered, unplaced, gapViolations };
 }
 

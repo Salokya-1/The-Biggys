@@ -215,6 +215,7 @@ model Section {
   intake       Intake          @relation(fields: [intakeId], references: [id])
   students     Student[]
   slots        TimetableSlot[]
+  combinedInto TimetableSlot[] @relation("SlotGroups")
   swapRequests ChangeRequest[] @relation("TargetSection")
   examSessions ExamSession[]
 
@@ -453,6 +454,9 @@ model TimetableSlot {
   exceptions     SlotException[]
   requests       ChangeRequest[]
   cameraRequests CameraAccessRequest[] @relation("SlotCameraRequests")
+  /// Every group in the room. A lecture combines the whole cohort (C1+C2+…); a tutorial or
+  /// workshop has the one group in `section`.
+  groups         Section[]             @relation("SlotGroups")
 
   @@index([semesterId, sectionId])
   @@index([teacherId, dayOfWeek])
@@ -557,6 +561,9 @@ model Venue {
   disabledSeats Json          @default("[]") // [{ "row": 3, "col": 4 }, ...]
   adjacencyMode AdjacencyMode @default(ROW)
   isClassroom   Boolean       @default(true)
+  /// What the room is for. Lectures need a hall or lecture theatre, workshops a lab, tutorials a
+  /// seminar or tutorial room — the split Islington's own allocation sheet works to.
+  roomType      RoomType      @default(TUTORIAL_ROOM)
   /// Optional drawn layout: { "cells": { "3:4": "AISLE" | "DESK" | "OFF" }, "labelMode": "ROW_LETTER" | "NUMERIC" }
   layout        Json?
 
@@ -662,6 +669,15 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
+}
+
+/// What a room is used for.
+enum RoomType {
+  HALL
+  LECTURE_THEATRE
+  TUTORIAL_ROOM
+  SEMINAR_ROOM
+  LAB
 }
 
 /// Lecture, tutorial or workshop. Each year of study has its own days for each kind.

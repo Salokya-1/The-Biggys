@@ -5,7 +5,7 @@ import { idParam, parse } from '../lib/validation';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { actorOf, audit } from '../lib/audit';
 import { allow, requireRole, STAFF } from '../plugins/auth';
-import { DEFAULT_MAX_GAP_MIN, EARLY_PERIODS, STANDARD_PERIODS, findClashes, findGapViolations, generateTimetable, isFinalYearSemester, periodsForSemester, slotDate, suggestSlots, toMinutes } from '../lib/timetable';
+import { DAY_FIRST_START, DAY_LAST_END, DEFAULT_MAX_GAP_MIN, EARLY_PERIODS, SESSION, STANDARD_PERIODS, findClashes, fromMinutes, startTimes, findGapViolations, generateTimetable, isFinalYearSemester, periodsForSemester, slotDate, suggestSlots, toMinutes } from '../lib/timetable';
 import { buildDay, dayIso, parseDay, slotInclude, teacherConflicts, venueConflicts } from '../services/calendar';
 import { notifyUsers } from '../lib/notify';
 
@@ -351,12 +351,28 @@ export async function timetableRoutes(app: FastifyInstance) {
   });
 
   /** The period grid a semester uses, so the calendar can draw drop targets. */
+  /**
+   * The half-hour ladder a class can start on, plus how long each kind of class runs. Classes are
+   * no longer one fixed length — a lecture is 90 minutes, a tutorial 60 and a workshop 120 — so
+   * the calendar draws rows from the ladder and each class spans its own end time.
+   */
   app.get('/timetable/periods', { preHandler: [allow('timetable.read')] }, async (req) => {
     const { semesterId } = parse(z.object({ semesterId: z.string().optional() }), req.query);
     const semester = semesterId ? await prisma.semester.findUnique({ where: { id: semesterId }, select: { number: true } }) : null;
     const finalYear = isFinalYearSemester(semester?.number ?? 1);
-    const periods = (finalYear ? EARLY_PERIODS : STANDARD_PERIODS).filter((p) => p.dayOfWeek === 1).map((p) => ({ startTime: p.startTime, endTime: p.endTime }));
-    return { finalYear, dayEndsBy: finalYear ? '10:00' : '17:15', maxGapHours: DEFAULT_MAX_GAP_MIN / 60, periods };
+    const dayEndsBy = finalYear ? '10:00' : DAY_LAST_END;
+    // Only the starts a class could actually use, so the grid has no dead rows.
+    const used = semesterId ? await prisma.timetableSlot.findMany({ where: { semesterId }, select: { startTime: true }, distinct: ['startTime'] }) : [];
+    const ladder = startTimes(DAY_FIRST_START, dayEndsBy).filter((s) => toMinutes(s) + 60 <= toMinutes(dayEndsBy));
+    const starts = [...new Set([...ladder, ...used.map((u) => u.startTime)])].sort((a, b) => toMinutes(a) - toMinutes(b));
+    return {
+      finalYear,
+      dayEndsBy,
+      maxGapHours: DEFAULT_MAX_GAP_MIN / 60,
+      sessions: Object.entries(SESSION).map(([kind, s]) => ({ kind, minutes: s.minutes, rooms: s.rooms })),
+      // `endTime` is the default for a class starting here; a class keeps whatever length it has.
+      periods: starts.map((startTime) => ({ startTime, endTime: fromMinutes(Math.min(toMinutes(startTime) + 60, toMinutes(dayEndsBy))) })),
+    };
   });
 
   // unused-import guard

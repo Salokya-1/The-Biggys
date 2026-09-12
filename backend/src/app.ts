@@ -23,6 +23,7 @@ import { assistantRoutes } from './routes/assistant';
 import { adminUserRoutes } from './routes/admin-users';
 import { cameraRoutes } from './routes/camera';
 import { moduleOverviewRoutes } from './routes/module-overview';
+import { allocationRoutes } from './routes/allocation';
 import multipart from '@fastify/multipart';
 
 export async function buildApp() {
@@ -106,6 +107,7 @@ export async function buildApp() {
       await api.register(adminUserRoutes);
       await api.register(cameraRoutes);
       await api.register(moduleOverviewRoutes);
+      await api.register(allocationRoutes);
     },
     { prefix: '/api' },
   );

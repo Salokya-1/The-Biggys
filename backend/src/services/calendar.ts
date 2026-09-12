@@ -13,6 +13,7 @@ export const isoDow = (d: Date) => ((d.getUTCDay() + 6) % 7) + 1; // 1 = Monday
 const slotInclude = {
   section: { select: { id: true, name: true, intake: { select: { id: true, label: true, programme: { select: { code: true } } } } } },
   moduleOffering: { select: { id: true, module: { select: { code: true, title: true } } } },
+  groups: { select: { id: true, name: true } },
   teacher: { select: { id: true, name: true } },
   venue: { select: { id: true, name: true, building: true } },
   semester: { select: { id: true, number: true, term: true, startDate: true, teachingWeeks: true, examStart: true, examEnd: true } },
@@ -24,6 +25,8 @@ export interface DayItem {
   kind: 'CLASS' | 'EXAM';
   /** Lecture, tutorial or workshop — only on classes. */
   classKind?: 'LECTURE' | 'TUTORIAL' | 'WORKSHOP';
+  /** Every group in the room; a lecture combines the whole cohort. */
+  groups?: string[];
   id: string;
   date: string;
   startTime: string;
@@ -89,12 +92,13 @@ export async function buildDay(date: Date, filter: DayFilter): Promise<DayItem[]
       items.push({
         kind: 'CLASS',
         classKind: s.kind,
+        groups: (s.groups.length ? s.groups : [s.section]).map((g) => g.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
         id: `slot:${s.id}:${dayIso(date)}`,
         date: dayIso(date),
         startTime,
         endTime,
         title: `${s.moduleOffering.module.code} · ${s.moduleOffering.module.title}`,
-        subtitle: `${s.kind.charAt(0) + s.kind.slice(1).toLowerCase()} · Section ${s.section.name} · ${s.section.intake.programme.code} ${s.section.intake.label} · ${teacher.name}${venue ? ` · ${venue.name}` : ''}`,
+        subtitle: `${s.kind.charAt(0) + s.kind.slice(1).toLowerCase()} · ${(s.groups.length ? s.groups : [s.section]).map((g) => g.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join('+')} · ${s.section.intake.programme.code} ${s.section.intake.label} · ${teacher.name}${venue ? ` · ${venue.name}` : ''}`,
         module: s.moduleOffering.module,
         section: { id: s.section.id, name: s.section.name },
         teacher,

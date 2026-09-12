@@ -3,7 +3,7 @@
 import { useMemo, useState, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, GripVertical, Plus, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, FileSpreadsheet, GripVertical, Plus, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { MODULE_PALETTE } from '@/components/seat-grid';
 import { ReasonField } from '@/components/reason-field';
-import { api, ApiError, qs } from '@/lib/api';
+import { api, ApiError, downloadWithAuth, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import type { SlotCandidate } from '@/lib/types';
@@ -47,6 +47,8 @@ interface Item {
   venue?: { id: string; name: string } | null;
   slotId?: string;
   classKind?: 'LECTURE' | 'TUTORIAL' | 'WORKSHOP';
+  /** Every group in the room; a lecture combines the whole cohort. */
+  groups?: string[];
   offeringId?: string;
   examSessionId?: string;
   status: 'SCHEDULED' | 'CANCELLED' | 'CHANGED';
@@ -64,6 +66,7 @@ interface PeriodGrid {
   finalYear: boolean;
   dayEndsBy: string;
   maxGapHours: number;
+  sessions?: { kind: string; minutes: number; rooms: string[] }[];
   periods: { startTime: string; endTime: string }[];
 }
 interface Health {
@@ -195,7 +198,9 @@ export default function TimetablePage() {
   // Sunday first, Saturday dropped — the days a class can actually be on.
   const allDays = wk.data?.days ?? [];
   const weekdays = allDays.length ? TEACHING_WEEK.map((d) => ({ ...allDays[d.index], dayOfWeek: d.dayOfWeek, label: d.label })) : [];
-  const inPeriod = (i: Item, p: { startTime: string; endTime: string }) => i.startTime === p.startTime && i.endTime === p.endTime;
+  // A class sits in the row it starts on and keeps its own length: a lecture runs 90 minutes, a
+  // tutorial 60 and a workshop 120, so matching on the end time too would hide most of them.
+  const inPeriod = (i: Item, p: { startTime: string }) => i.startTime === p.startTime;
   const offGrid = (day: { items: Item[] }) => day.items.filter((i) => !periods.some((p) => inPeriod(i, p)));
 
   /** The slot id travels in the drag payload, so a drop works even before React re-renders. */
@@ -235,6 +240,16 @@ export default function TimetablePage() {
         {isStaff && (
           <Button size="sm" variant="outline" onClick={() => router.push('/exams?new=1')}>
             <CalendarDays className="mr-1 h-4 w-4" /> Add exam
+          </Button>
+        )}
+        {isStaff && sem && (
+          <Button
+            size="sm"
+            variant="outline"
+            title="One row per session — day, time, hours, class type, year, course, specialisation, module, lecturer, group, block, room — plus a sheet per year and the teacher workload"
+            onClick={() => downloadWithAuth(`/api/timetable/allocation.xlsx${qs({ semesterId: sem.id })}`, `resource-allocation-${sem.intake.programme.code}-${sem.intake.label.replace(/\s+/g, '')}.xlsx`).catch((e: Error) => toast.error(e.message))}
+          >
+            <FileSpreadsheet className="mr-1 h-4 w-4" /> Resource allocation
           </Button>
         )}
         {canEdit && sem && (
@@ -278,7 +293,8 @@ export default function TimetablePage() {
 
       {grid.data && (
         <p className="text-xs text-muted-foreground">
-          {grid.data.finalYear ? 'Final-year group: classes run 07:00–10:00 so students are free for work and placements.' : 'Standard day: 08:00–17:15.'} No section may have a gap longer than {grid.data.maxGapHours} hours.
+          {grid.data.finalYear ? `Final-year group: classes finish by ${grid.data.dayEndsBy} so students are free for work and placements.` : `Classes start on the half hour from 06:30 and finish by ${grid.data.dayEndsBy}.`}{' '}
+          Lectures run 90 minutes for the whole cohort in a hall, tutorials an hour per group, workshops two hours in a lab. No group may have a gap longer than {grid.data.maxGapHours} hours.
         </p>
       )}
       {health.data && (health.data.gaps.length > 0 || health.data.lateFinalYear.length > 0) && (
@@ -351,7 +367,13 @@ export default function TimetablePage() {
                         >
                           {canEdit && it.kind === 'CLASS' && it.status !== 'CANCELLED' && <GripVertical className="mt-0.5 h-3 w-3 shrink-0 opacity-50" />}
                           <span className="min-w-0">
-                            <span className="block truncate font-semibold">{it.kind === 'EXAM' ? '📝 ' : ''}{it.module?.code ?? it.title}{it.section && isStaff ? ` · ${it.section.name}` : ''}</span>
+                            <span className="block truncate font-semibold">
+                              {it.kind === 'EXAM' ? '📝 ' : ''}{it.module?.code ?? it.title}
+                              {isStaff && (it.groups?.length ? ` · ${it.groups.join('+')}` : it.section ? ` · ${it.section.name}` : '')}
+                            </span>
+                            <span className="block truncate">
+                              {it.classKind ? `${KIND_LABEL[it.classKind]} · ` : ''}{it.startTime}–{it.endTime}
+                            </span>
                             <span className="block truncate">{it.venue?.name ?? ''}{it.teacher && isStaff ? ` · ${it.teacher.name.split(' ')[0]}` : ''}{it.seat ? ` · seat ${it.seat}` : ''}</span>
                             {it.status === 'CHANGED' && <span className="block truncate text-brand-orange">changed</span>}
                           </span>
