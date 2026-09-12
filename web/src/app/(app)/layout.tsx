@@ -69,15 +69,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const items = NAV.filter((n) => n.roles.includes(user.role) && (!n.needs || can(n.needs)));
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
-        <div className="border-b border-sidebar-border px-5 py-4">
+    // The rail is fixed: only the content column scrolls, so navigation stays put on a long page.
+    <div className="flex h-dvh overflow-hidden bg-background">
+      <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
+        <div className="border-b border-sidebar-border px-5 py-5">
           <Link href="/" className="block">
-            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={150} height={35} priority className="h-9 w-auto" />
+            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={210} height={49} priority className="h-13 w-auto" />
           </Link>
-          <p className="mt-2 text-[11px] font-medium uppercase tracking-widest text-sidebar-foreground/70">RTE Management System</p>
+          <p className="mt-3 text-[11px] font-medium uppercase tracking-widest text-sidebar-foreground/70">RTE Management System</p>
         </div>
-        <nav className="flex-1 space-y-1 p-3">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
           {items.map((n) => {
             const active = pathname === n.href || (n.href !== '/me' && pathname.startsWith(n.href + '/'));
             return (
@@ -118,9 +119,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-3 bg-sidebar px-4 py-3 text-sidebar-foreground md:hidden">
-          <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={120} height={28} className="h-7 w-auto" />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center justify-between gap-3 bg-sidebar px-4 py-3 text-sidebar-foreground md:hidden">
+          <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={160} height={37} className="h-10 w-auto" />
           <div className="flex flex-wrap items-center gap-3">
             {items.map((n) => (
               <Link key={n.href} href={n.href} className="text-xs underline-offset-4 hover:underline">
@@ -133,7 +134,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-8">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
       </div>
       <Assistant />
     </div>
