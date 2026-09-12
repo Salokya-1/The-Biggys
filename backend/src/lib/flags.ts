@@ -29,6 +29,16 @@ export interface Flag {
   componentId?: string;
   enrollmentId?: string;
   message: string;
+  /**
+   * The comparison behind the flag, when there is one. A screen full of sentences saying the same
+   * thing in different numbers is unreadable; given the parts, the UI can put them in a table and
+   * sort by how far off they are.
+   */
+  subject?: string;
+  measure?: string;
+  value?: number;
+  expected?: number;
+  delta?: number;
 }
 
 export interface ComponentStats {
@@ -99,7 +109,7 @@ export function computeFlags(components: FlagComponent[], rows: FlagRow[], previ
     if (prev && prev.n >= MIN_N) {
       const shift = c.mean - prev.mean;
       if (Math.abs(shift) > 15) {
-        flags.push({ level: 'warning', scope: 'component', componentId: c.componentId, message: `${c.name}: mean ${c.mean}% is ${shift > 0 ? 'up' : 'down'} ${Math.abs(round1(shift))} points on the previous offering (${prev.mean}%)` });
+        flags.push({ level: 'warning', scope: 'component', componentId: c.componentId, subject: c.name, measure: 'Mean vs last offering', value: round1(c.mean), expected: round1(prev.mean), delta: round1(shift), message: `${c.name}: mean ${c.mean}% is ${shift > 0 ? 'up' : 'down'} ${Math.abs(round1(shift))} points on the previous offering (${prev.mean}%)` });
       }
     }
   }
@@ -115,14 +125,14 @@ export function computeFlags(components: FlagComponent[], rows: FlagRow[], previ
         const othersMean = others.reduce((s, x) => s + x.p, 0) / others.length;
         if (Math.abs(p - othersMean) > 40) {
           const cname = components.find((c) => c.id === m.componentId)?.name ?? m.componentId;
-          flags.push({ level: 'warning', scope: 'row', enrollmentId: r.enrollmentId, componentId: m.componentId, message: `${r.studentId} ${r.name}: ${cname} (${round1(p)}%) is ${Math.abs(round1(p - othersMean))} points from their other components (${round1(othersMean)}%)` });
+          flags.push({ level: 'warning', scope: 'row', enrollmentId: r.enrollmentId, componentId: m.componentId, subject: `${r.studentId} ${r.name}`, measure: cname, value: round1(p), expected: round1(othersMean), delta: round1(p - othersMean), message: `${r.studentId} ${r.name}: ${cname} (${round1(p)}%) is ${Math.abs(round1(p - othersMean))} points from their other components (${round1(othersMean)}%)` });
         }
       }
     }
     if (r.overallMark !== undefined && r.historicalAverage != null) {
       const diff = r.overallMark - r.historicalAverage;
       if (Math.abs(diff) > 25) {
-        flags.push({ level: 'warning', scope: 'row', enrollmentId: r.enrollmentId, message: `${r.studentId} ${r.name}: overall ${round1(r.overallMark)} is ${Math.abs(round1(diff))} points ${diff > 0 ? 'above' : 'below'} their published average (${round1(r.historicalAverage)})` });
+        flags.push({ level: 'warning', scope: 'row', enrollmentId: r.enrollmentId, subject: `${r.studentId} ${r.name}`, measure: 'Overall vs their average', value: round1(r.overallMark), expected: round1(r.historicalAverage), delta: round1(diff), message: `${r.studentId} ${r.name}: overall ${round1(r.overallMark)} is ${Math.abs(round1(diff))} points ${diff > 0 ? 'above' : 'below'} their published average (${round1(r.historicalAverage)})` });
       }
     }
   }

@@ -21,7 +21,7 @@ interface Dashboard {
   funnel: { counts: Record<string, number>; overdueDays: number; overdue: { id: string; status: MarkSheetStatus; module: string; cohort: string; since: string }[] };
   publication: { id: string; module: string; title: string; cohort: string; lecturer: string | null; status: MarkSheetStatus; version: number; marksEntered: number; marksExpected: number; missing: number; updatedAt: string; overdue: boolean }[];
   importErrorRate: number;
-  exams: { id: string; title: string; date: string; startTime: string; candidates: number; capacity: number; seated: number; utilisation: number; ready: boolean }[];
+  exams: { id: string; title: string; date: string; startTime: string; candidates: number; capacity: number; shortfall: number; seated: number; utilisation: number; ready: boolean }[];
   academic: {
     passRates: { code: string; title: string; latest: { intake: string; passRate: number; n: number; resits: number }; previous: { intake: string; passRate: number } | null; delta: number | null }[];
     resitVolume: number;
@@ -142,10 +142,21 @@ export default function DashboardPage() {
               <Link key={e.id} href={`/exams/${e.id}`} className="block rounded-none border p-3 hover:bg-muted">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{e.title}</span>
-                  {e.ready ? <Badge variant="outline" className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Seated</Badge> : <Badge variant="outline" className="border-transparent bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Seating pending</Badge>}
+                  {e.shortfall > 0 ? (
+                    <Badge variant="outline" className="shrink-0 border-transparent bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">{e.shortfall} without a seat</Badge>
+                  ) : e.ready ? (
+                    <Badge variant="outline" className="shrink-0 border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Seated</Badge>
+                  ) : (
+                    <Badge variant="outline" className="shrink-0 border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Seating pending</Badge>
+                  )}
                 </div>
-                <div className="mt-1 text-xs text-muted-foreground">{new Date(e.date).toLocaleDateString()} {e.startTime} · {e.candidates} candidates · capacity {e.capacity} · utilisation {e.utilisation}%</div>
-                <div className="mt-2 h-1.5 w-full rounded bg-muted"><div className="h-1.5 rounded bg-primary" style={{ width: `${Math.min(100, e.utilisation)}%` }} /></div>
+                <div className="mt-1 text-xs text-muted-foreground">{new Date(e.date).toLocaleDateString()} {e.startTime} · {e.candidates} candidates · {e.capacity} seats</div>
+                {e.shortfall > 0 ? (
+                  <div className="mt-1 text-xs font-medium text-red-700 dark:text-red-300">Rooms hold {e.capacity}. Add a venue or split the sitting.</div>
+                ) : null}
+                <div className="mt-2 h-1.5 w-full rounded bg-muted">
+                  <div className={`h-1.5 rounded ${e.shortfall > 0 ? 'bg-red-500' : 'bg-primary'}`} style={{ width: `${Math.min(100, e.capacity ? Math.round((e.candidates / e.capacity) * 100) : 0)}%` }} />
+                </div>
               </Link>
             ))}
           </CardContent>

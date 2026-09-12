@@ -161,6 +161,12 @@ export interface Flag {
   componentId?: string;
   enrollmentId?: string;
   message: string;
+  /** Present on flags that compare two numbers, so they can be tabulated rather than listed. */
+  subject?: string;
+  measure?: string;
+  value?: number;
+  expected?: number;
+  delta?: number;
 }
 
 export interface ComponentStats {

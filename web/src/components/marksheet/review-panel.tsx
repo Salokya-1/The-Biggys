@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { OutcomeBadge } from '@/components/status-badges';
-import type { MarkSheetDetail } from '@/lib/types';
+import type { Flag, MarkSheetDetail } from '@/lib/types';
 
 export function ReviewPanel({ detail }: { detail: MarkSheetDetail }) {
   const { validation, flags, stats, rows, offering, sheet } = detail;
@@ -42,20 +44,7 @@ export function ReviewPanel({ detail }: { detail: MarkSheetDetail }) {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Statistical flags <span className="text-sm font-normal text-muted-foreground">— explainable, never blocking, never change a mark</span></CardTitle></CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          {warnings.length === 0 && infos.length === 0 && <p className="text-muted-foreground">Nothing unusual detected.</p>}
-          {warnings.map((f, i) => (
-            <div key={i} className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{f.message}</span>
-            </div>
-          ))}
-          {infos.map((f, i) => (
-            <div key={i} className="flex items-start gap-2 text-muted-foreground"><Info className="mt-0.5 h-4 w-4 shrink-0" /><span>{f.message}</span></div>
-          ))}
-        </CardContent>
-      </Card>
+      <FlagPanel warnings={warnings} infos={infos} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -125,5 +114,87 @@ export function ReviewPanel({ detail }: { detail: MarkSheetDetail }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+
+/**
+ * Statistical flags, read at a glance.
+ *
+ * These used to print one amber paragraph per student. Thirty of them say the same sentence with
+ * different numbers, and the eye slides off the lot — which is the opposite of a flag. The ones
+ * that are a comparison become a table sorted by how far off they are, biggest first, with a
+ * one-line count above it; only the handful that are genuinely prose stay as sentences.
+ */
+function FlagPanel({ warnings, infos }: { warnings: Flag[]; infos: Flag[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const isComparison = (f: Flag) => f.value !== undefined && f.expected !== undefined && f.delta !== undefined;
+  const table = warnings.filter(isComparison).sort((a, b) => Math.abs(b.delta!) - Math.abs(a.delta!));
+  const prose = warnings.filter((f) => !isComparison(f));
+  const above = table.filter((f) => f.delta! > 0).length;
+  const shown = showAll ? table : table.slice(0, 6);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Worth a look</CardTitle>
+        <p className="text-sm text-muted-foreground">Marks that sit a long way from what the rest of the evidence suggests. Nothing here blocks submission and nothing here changes a mark.</p>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {table.length === 0 && prose.length === 0 && infos.length === 0 && (
+          <p className="text-muted-foreground">Nothing unusual. Every mark sits close to what the student and the cohort normally produce.</p>
+        )}
+
+        {table.length > 0 && (
+          <>
+            <p>
+              <span className="font-medium">{table.length}</span> to check — {above} higher than expected, {table.length - above} lower.
+            </p>
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Who</TableHead>
+                    <TableHead>Compared with</TableHead>
+                    <TableHead className="text-right">Got</TableHead>
+                    <TableHead className="text-right">Expected</TableHead>
+                    <TableHead className="text-right">Gap</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {shown.map((f, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="max-w-[16rem] truncate">{f.subject}</TableCell>
+                      <TableCell className="max-w-[14rem] truncate text-muted-foreground">{f.measure}</TableCell>
+                      <TableCell className="text-right font-mono">{f.value}</TableCell>
+                      <TableCell className="text-right font-mono text-muted-foreground">{f.expected}</TableCell>
+                      <TableCell className={`text-right font-mono font-medium ${f.delta! > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                        {f.delta! > 0 ? '+' : ''}{f.delta}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {table.length > 6 && (
+              <Button variant="outline" size="sm" onClick={() => setShowAll(!showAll)}>
+                {showAll ? 'Show the biggest six' : `Show all ${table.length}`}
+              </Button>
+            )}
+          </>
+        )}
+
+        {prose.map((f, i) => (
+          <div key={i} className="flex items-start gap-2 text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span className="min-w-0">{f.message}</span>
+          </div>
+        ))}
+        {infos.map((f, i) => (
+          <div key={i} className="flex items-start gap-2 text-muted-foreground">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" /><span className="min-w-0">{f.message}</span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

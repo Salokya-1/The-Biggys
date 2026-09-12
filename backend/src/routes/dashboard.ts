@@ -73,7 +73,22 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const exams = sessions.map((s) => {
       const capacity = s.venues.reduce((n, v) => n + capacityOf({ id: v.id, name: v.name, rows: v.rows, cols: v.cols, disabledSeats: (v.disabledSeats as { row: number; col: number }[]) ?? [], adjacencyMode: v.adjacencyMode }), 0);
       const candidates = s.offerings.reduce((n, o) => n + o._count.enrollments, 0);
-      return { id: s.id, title: s.title, date: s.date, startTime: s.startTime, candidates, capacity, seated: s._count.seatAllocations, utilisation: capacity ? Math.round((s._count.seatAllocations / capacity) * 100) : 0, ready: s._count.seatAllocations >= Math.min(candidates, capacity) && candidates > 0 };
+      // A full room is not a ready exam. Filling every seat and still leaving 315 candidates
+      // standing used to read as "Seated" at 100% utilisation, which is the one case somebody has
+      // to act on, so the shortfall is reported in its own right.
+      const shortfall = Math.max(0, candidates - capacity);
+      return {
+        id: s.id,
+        title: s.title,
+        date: s.date,
+        startTime: s.startTime,
+        candidates,
+        capacity,
+        shortfall,
+        seated: s._count.seatAllocations,
+        utilisation: capacity ? Math.round((s._count.seatAllocations / capacity) * 100) : 0,
+        ready: candidates > 0 && shortfall === 0 && s._count.seatAllocations >= candidates,
+      };
     });
 
     // ---------- academic: pass rate per module, latest published offering vs previous ----------
