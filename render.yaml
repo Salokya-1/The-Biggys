@@ -8,6 +8,9 @@ databases:
     plan: free
     databaseName: biggys
     user: biggys
+    # Must match the API's region: `fromDatabase` only resolves inside one region, and without
+    # this line Render defaults the database to Oregon and the API fails to be created at all.
+    region: oregon
 
 services:
   - type: web
@@ -15,7 +18,7 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    region: singapore
+    region: oregon
     buildCommand: npm ci && npx prisma generate && npm run build
     # Migrations run before the server starts; server.ts runs them again defensively (idempotent).
     startCommand: npx prisma migrate deploy && node dist/server.js
@@ -42,13 +45,17 @@ services:
         sync: false # optional; leave empty to disable the assistant
       - key: OPENROUTER_MODEL
         value: nvidia/nemotron-3-ultra-550b-a55b:free
+      - key: IT_SUPPORT_EMAIL
+        sync: false # where camera access requests are sent
+      - key: SMTP_URL
+        sync: false # optional; without it mail is written to the outbox and marked queued
 
   - type: web
     name: biggys-web
     runtime: node
     plan: free
     rootDir: web
-    region: singapore
+    region: singapore # the web app talks to the API over the public internet, so it can sit anywhere
     buildCommand: npm ci && npm run build
     startCommand: npm run start
     autoDeploy: true
