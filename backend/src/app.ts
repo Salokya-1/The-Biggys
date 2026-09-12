@@ -14,6 +14,7 @@ import { moduleRoutes } from './routes/modules';
 import { studentRoutes } from './routes/students';
 import { markSheetRoutes } from './routes/marksheets';
 import { examRoutes } from './routes/exams';
+import { dashboardRoutes } from './routes/dashboard';
 import multipart from '@fastify/multipart';
 
 export async function buildApp() {
@@ -88,6 +89,7 @@ export async function buildApp() {
       await api.register(studentRoutes);
       await api.register(markSheetRoutes);
       await api.register(examRoutes);
+      await api.register(dashboardRoutes);
     },
     { prefix: '/api' },
   );
