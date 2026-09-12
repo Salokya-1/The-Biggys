@@ -80,13 +80,24 @@ export default function CameraAccessPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="max-w-2xl">
           <h1 className="text-2xl font-semibold tracking-tight">Camera access</h1>
-          <p className="text-sm text-muted-foreground">
-            Requests to IT support for a recorded view of a room, for the length of one exam or class. Only the RTE admin can raise one, and every request is emailed and kept on the record.
+          <p className="mt-1 text-sm text-muted-foreground">
+            A recorded view of one room, for the length of one exam or class. Only the RTE admin can ask, the window comes from the booking itself, and every request is emailed to IT support and kept on the record.
           </p>
         </div>
         {can('camera.request') ? <Button onClick={() => setForm(EMPTY)}><Video className="mr-1 h-4 w-4" /> New request</Button> : null}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {(['PENDING', 'SENT', 'APPROVED', 'DENIED'] as const).map((s) => (
+          <Card key={s} className="rounded-none">
+            <CardContent className="p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{s.toLowerCase()}</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">{d.items.filter((i) => i.status === s).length}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <Alert className="rounded-none">
@@ -95,7 +106,7 @@ export default function CameraAccessPage() {
           Requests go to <span className="font-medium">{d.itSupportEmail}</span>.{' '}
           {d.mailerConfigured
             ? 'Mail delivery is configured, so each request is sent as it is raised.'
-            : 'No mail server is configured (SMTP_URL is empty), so messages are written to the outbox and marked queued rather than being silently dropped.'}
+            : 'No mail server is configured, so messages are written to the outbox below and marked queued rather than silently dropped.'}
         </AlertDescription>
       </Alert>
 
@@ -104,54 +115,47 @@ export default function CameraAccessPage() {
           <CardTitle className="text-base">Requests</CardTitle>
           <CardDescription>{d.items.length} on record</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Reference</TableHead>
-                <TableHead>Room</TableHead>
-                <TableHead>When</TableHead>
-                <TableHead>For</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Decision</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {d.items.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-mono text-xs">{r.reference}</TableCell>
-                  <TableCell className="whitespace-nowrap">{r.venue.name}</TableCell>
-                  <TableCell className="whitespace-nowrap">{r.date.slice(0, 10)} {r.startTime}–{r.endTime}</TableCell>
-                  <TableCell className="max-w-[16rem] truncate">
-                    {r.examSession ? r.examSession.title : r.slot ? `${r.slot.moduleOffering.module.code} section ${r.slot.section.name}` : '—'}
-                  </TableCell>
-                  <TableCell className="max-w-[18rem] truncate text-muted-foreground" title={r.reason}>{r.reason}</TableCell>
-                  <TableCell>
+        <CardContent className="max-h-[28rem] space-y-2 overflow-y-auto">
+          {d.items.map((r) => (
+            <div key={r.id} className="border p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 font-medium">
+                    {r.venue.name}
+                    <span className="text-sm font-normal text-muted-foreground">{r.venue.building}</span>
                     <Badge className={`rounded-none ${STATUS_STYLE[r.status]}`}>{r.status}</Badge>
-                    {r.notifiedAt ? <span className="ml-2 text-xs text-muted-foreground">emailed</span> : null}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {r.status === 'APPROVED' || r.status === 'DENIED' ? (
-                      <span className="text-xs text-muted-foreground">{r.decidedAt?.slice(0, 10)}</span>
-                    ) : can('camera.request') ? (
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ id: r.id, decision: 'APPROVED' })}>
-                          <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Approve
-                        </Button>
-                        <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ id: r.id, decision: 'DENIED' })}>
-                          <XCircle className="mr-1 h-3.5 w-3.5" /> Deny
-                        </Button>
-                      </div>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {d.items.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">No camera access has been requested.</TableCell></TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
+                    {r.notifiedAt ? <span className="text-xs text-muted-foreground">emailed</span> : null}
+                  </p>
+                  <p className="mt-0.5 text-sm">
+                    {r.date.slice(0, 10)} · {r.startTime}–{r.endTime}
+                    {r.examSession ? ` · ${r.examSession.title}` : r.slot ? ` · ${r.slot.moduleOffering.module.code} group ${r.slot.section.name}` : ''}
+                  </p>
+                  <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{r.reason}</p>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">{r.reference} · asked by {r.requestedBy.name}</p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {r.status === 'APPROVED' || r.status === 'DENIED' ? (
+                    <span className="text-xs text-muted-foreground">decided {r.decidedAt?.slice(0, 10)}</span>
+                  ) : can('camera.request') ? (
+                    <>
+                      <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ id: r.id, decision: 'APPROVED' })}>
+                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Approve
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ id: r.id, decision: 'DENIED' })}>
+                        <XCircle className="mr-1 h-3.5 w-3.5" /> Deny
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ))}
+          {d.items.length === 0 ? (
+            <div className="py-10 text-center">
+              <Video className="mx-auto h-8 w-8 text-muted-foreground" />
+              <p className="mt-2 text-sm text-muted-foreground">No camera access has been requested.</p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

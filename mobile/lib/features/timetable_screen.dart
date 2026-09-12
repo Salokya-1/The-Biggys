@@ -58,7 +58,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
                 width: double.infinity,
                 color: Theme.of(context).colorScheme.secondaryContainer,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: Text('No classes this week — showing the week of ${fmtDate(week['weekStart'] as String)}', style: const TextStyle(fontSize: 12)),
+                child: Text('Next week of classes · ${fmtDate(week['weekStart'] as String)}', style: const TextStyle(fontSize: 12)),
               ),
             SizedBox(
               height: 74,
