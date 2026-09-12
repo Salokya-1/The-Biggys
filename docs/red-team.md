@@ -1,0 +1,22 @@
+# Red team — risks, abuse cases, and what we did about them
+
+| # | Risk / abuse case | Mitigation in the build | Residual risk |
+|---|---|---|---|
+| 1 | Lecturer edits a mark after results are out | Marks on a `PUBLISHED` sheet are immutable at the **database** level (trigger) and the API refuses edits outside `DRAFT`; corrections create a new version with a mandatory reason, audit rows and a student-visible "result updated" notice | None for the mark itself; the correction path relies on admin/leader discipline |
+| 2 | Student reads another student's results or an unpublished one | Ownership and `PUBLISHED AND publishedAt ≤ now` are applied **in the query**; `/api/students/:id` returns 403 for another student's ID; there is no client-side filtering to bypass | Compromised admin credentials |
+| 3 | Client-side-only authorisation | Every `/api` route requires a valid token (deny by default) and names its roles from one permission matrix (`plugins/auth.ts`, unit-tested); scope checks for lecturers/leaders are server-side | Matrix errors — covered by tests |
+| 4 | Bad spreadsheet corrupts records (duplicate IDs, 105/100, "fifty", wrong student) | Server-side parsing only; preview with per-row status; error rows are never written; commit is idempotent; CHECK constraint and trigger reject out-of-range marks even if the API were bypassed | Wrong-but-valid numbers (e.g. 57 typed as 75): caught by flags and review, not by validation |
+| 5 | Two people save the same sheet; last write wins silently | Optimistic lock (`lockVersion`) on every mutation → 409 with the current version; UI reloads and preserves local edits | None |
+| 6 | Credential stuffing / brute force | bcrypt; per-IP login limit; per-account lockout after 5 failures; identical error for unknown email and wrong password; refresh-token rotation with reuse detection | No MFA (backlog) |
+| 7 | Stolen token from the web `localStorage` (XSS) | 15-minute access tokens; refresh rotation; Helmet headers; React escapes output; no `dangerouslySetInnerHTML` | A successful XSS still gets a 15-minute window; move to httpOnly cookies + CSRF token when API and web share a domain |
+| 8 | Audit log tampering | Append-only via trigger; no update/delete route; entries carry actor, IP, before/after, reason | A DB superuser can drop the trigger — that is an infra control |
+| 9 | Grades computed differently in two places | One pure `computeGrade` function with fixture tests; the seed and the API share it; results are snapshotted per version so a scheme change never silently rewrites history | Scheme defaults (40/40, A ≥ 70) are **assumptions** until confirmed |
+| 10 | Seating puts two students of one module together, or someone gets no seat | Engine caps each module per venue, alternates modules, repairs clashes, and returns an explicit `unseated` list + remaining `violations`; both surfaced in red in the UI; tests for each constraint | Over-capacity or oversized modules produce reported clashes — by design |
+| 11 | Special-needs students placed at the back | Priority pass fills front-row/aisle seats first; repair never moves them out of priority seats; marked ◆ on grids and "(SN)" on door lists | Only "front row or aisle" is modelled |
+| 12 | Cold start makes the demo look dead | Keep-alive on `/health/ready` every 3 min (cron-job.org); app shows "Server waking up…" and retries; system-status widget proves API/DB/commit live | First hit after a long idle may still take ~2 s |
+| 13 | Judges' clicking corrupts demo data | `npm run seed` is idempotent (truncate + rebuild, 5 s); Neon `demo-clean` branch as a second fallback | — |
+| 14 | Secrets in the repo | `.gitignore` in commit #1; `.env.example` only; keys in Antideploy/Vercel dashboards; no keystore | — |
+| 15 | PII in logs / seed | pino redaction of authorization headers and passwords; seed is fictional; no real student data anywhere | — |
+| 16 | Statistical flags used as accusations | Flags are labelled "explainable, never blocking, never change a mark", each carries its reason, and they only appear to reviewers | Human misuse |
+| 17 | File upload abuse | 5 MB limit, one file, extension allow-list, parsed in memory server-side, never written to disk | Malformed XLSX could be CPU-heavy — limit is small |
+| 18 | Mobile app used to tamper | App is read-only for students; staff actions go through the same transition endpoint with the same checks; tokens in secure storage; base-URL switch is a convenience, not a trust boundary | — |
