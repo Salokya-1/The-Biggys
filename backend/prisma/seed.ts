@@ -13,6 +13,7 @@ import 'dotenv/config';
 import { PrismaClient, type MarkSheetStatus, type Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { computeGrade, type ComponentSpec } from '../src/lib/grading';
+import { generateSeating } from '../src/lib/seating';
 
 const prisma = new PrismaClient();
 export const DEMO_PASSWORD = 'Demo1234!';
@@ -369,7 +370,7 @@ async function main() {
       venues: { connect: [{ id: lb101.id }, { id: lab3.id }] },
     },
   });
-  await prisma.examSession.create({
+  const midterm = await prisma.examSession.create({
     data: {
       title: 'Semester 1 Mid-term — Programming & Management (Sep 2026 intake)',
       date: date(2026, 10, 24),
@@ -380,6 +381,22 @@ async function main() {
       venues: { connect: [{ id: kumari.id }] },
     },
   });
+  // The mid-term is already seated (the resit session is left pending for the live demo).
+  {
+    const enrolments = await prisma.enrollment.findMany({
+      where: { moduleOfferingId: { in: s1Offerings.map((o) => o.id) }, deletedAt: null },
+      include: { student: { select: { id: true, studentId: true, name: true, specialNeedsSeating: true } }, moduleOffering: { select: { module: { select: { code: true } } } } },
+    });
+    const seating = generateSeating(
+      [{ id: kumari.id, name: kumari.name, rows: kumari.rows, cols: kumari.cols, disabledSeats: kumari.disabledSeats as { row: number; col: number }[], adjacencyMode: kumari.adjacencyMode }],
+      enrolments.map((e) => ({ studentId: e.student.id, label: e.student.studentId, name: e.student.name, offeringId: e.moduleOfferingId, moduleCode: e.moduleOffering.module.code, specialNeeds: e.student.specialNeedsSeating })),
+      3,
+    );
+    await prisma.seatAllocation.createMany({
+      data: seating.allocations.map((a) => ({ examSessionId: midterm.id, venueId: a.venueId, studentId: a.studentId, moduleOfferingId: a.offeringId, row: a.row, col: a.col, seatLabel: a.seatLabel, runId: 'seed-run-1' })),
+    });
+    auditRows.push({ actorId: admin.id, action: 'seating.generate', entityType: 'ExamSession', entityId: midterm.id, after: { runId: 'seed-run-1', seed: 3, seated: seating.allocations.length, unseated: seating.unseated.length, violations: seating.violations.length }, createdAt: date(2026, 9, 8, 11) });
+  }
 
   // ---------- audit log + notifications ----------
   await prisma.auditLog.createMany({ data: auditRows.map((a) => ({ ...a, before: a.before as never, after: a.after as never })) });
