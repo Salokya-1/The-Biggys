@@ -14,6 +14,8 @@ import { PrismaClient, type MarkSheetStatus, type Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { computeGrade, type ComponentSpec } from '../src/lib/grading';
 import { generateSeating } from '../src/lib/seating';
+import { generateTimetable, type ExistingBooking } from '../src/lib/timetable';
+import { examSlots, generateExamSchedule } from '../src/lib/exam-schedule';
 
 const prisma = new PrismaClient();
 export const DEMO_PASSWORD = 'Demo1234!';
@@ -198,6 +200,8 @@ async function main() {
   };
 
   const allStudents: { id: string; studentId: string; name: string; userId: string | null; programme: string; intakeLabel: string }[] = [];
+  const sectionsByIntake = new Map<string, { id: string; name: string; size: number }[]>();
+  const currentSemesters: { id: string; intakeId: string; start: Date; end: Date; examStart: Date; examEnd: Date; label: string }[] = [];
   const offeringsAll: { id: string; code: string; sem: number; intakeLabel: string; programme: string; comps: { id: string; name: string; weight: number; maxMark: number; componentPassMark: number | null }[]; moduleId: string; semesterId: string; lecturerId: string }[] = [];
   const auditRows: { actorId: string | null; action: string; entityType: string; entityId: string; before?: unknown; after?: unknown; reason?: string | null; createdAt: Date }[] = [];
 
@@ -220,6 +224,8 @@ async function main() {
         semesters.push({ id: s.id, number: n, end: w.end, start: w.start, examStart: w.examStart });
       }
       const current = semesters[semesters.length - 1];
+      const cw = semWindow(it.year, current.number);
+      currentSemesters.push({ id: current.id, intakeId: intake.id, start: cw.start, end: cw.end, examStart: cw.examStart, examEnd: cw.examEnd, label: `${p.code} ${it.label} S${current.number}` });
 
       // sections of ~24 students (A, B, C …)
       const size = cohortSize(p.code, it.label);
@@ -229,6 +235,7 @@ async function main() {
         const sec = await prisma.section.create({ data: { intakeId: intake.id, name: String.fromCharCode(65 + s) } });
         sections.push(sec.id);
       }
+      sectionsByIntake.set(intake.id, sections.map((id, i) => ({ id, name: String.fromCharCode(65 + i), size: Math.min(SECTION_SIZE, size - i * SECTION_SIZE) })));
 
       const cohort: typeof allStudents = [];
       for (let i = 0; i < size; i++) {
@@ -467,6 +474,50 @@ async function main() {
       data: seating.allocations.map((a) => ({ examSessionId: midterm.id, venueId: a.venueId, studentId: a.studentId, moduleOfferingId: a.offeringId, row: a.row, col: a.col, seatLabel: a.seatLabel, runId: 'seed-run-1' })),
     });
     auditRows.push({ actorId: admin.id, action: 'seating.generate', entityType: 'ExamSession', entityId: midterm.id, after: { runId: 'seed-run-1', seed: 3, seated: seating.allocations.length, unseated: seating.unseated.length, violations: seating.violations.length }, createdAt: date(2026, 9, 8, 11) });
+  }
+
+  // ---------- weekly routines for every semester now in progress (clash-free across all of them) ----------
+  {
+    const classrooms = await prisma.venue.findMany({ where: { isClassroom: true } });
+    const rooms = classrooms.map((r) => ({ id: r.id, name: r.name, capacity: r.rows * r.cols }));
+    const existing: ExistingBooking[] = [];
+    let totalSlots = 0;
+    for (const sem of currentSemesters) {
+      const secs = sectionsByIntake.get(sem.intakeId) ?? [];
+      const offs = offeringsAll.filter((o) => o.semesterId === sem.id);
+      if (!secs.length || !offs.length) continue;
+      const r = generateTimetable(secs, offs.map((o) => ({ id: o.id, code: o.code, teacherId: o.lecturerId })), rooms, undefined, existing);
+      await prisma.timetableSlot.createMany({ data: r.slots.map((s) => ({ semesterId: sem.id, sectionId: s.sectionId, moduleOfferingId: s.offeringId, teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, weekFrom: 1, weekTo: 12 })) });
+      existing.push(...r.slots.map((s) => ({ teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })));
+      totalSlots += r.slots.length;
+      auditRows.push({ actorId: admin.id, action: 'timetable.generate', entityType: 'Semester', entityId: sem.id, after: { slots: r.slots.length, unplaced: r.unplaced.length }, createdAt: date(2026, 9, 7, 10) });
+    }
+    console.log(`seed: ${totalSlots} weekly timetable slots across ${currentSemesters.length} semesters`);
+  }
+
+  // ---------- final exam schedule for the Sep 2026 Computing cohort ("generated 3 weeks before the window") ----------
+  {
+    const sem = currentSemesters.find((s) => s.label === 'BSCC Sep 2026 S1');
+    if (sem) {
+      const offs = offeringsAll.filter((o) => o.semesterId === sem.id);
+      const venues = await prisma.venue.findMany();
+      const teachers = await prisma.user.findMany({ where: { role: { in: ['LECTURER', 'MODULE_LEADER'] } }, select: { id: true, name: true } });
+      const counts = await Promise.all(offs.map((o) => prisma.enrollment.count({ where: { moduleOfferingId: o.id } })));
+      const sched = generateExamSchedule(
+        offs.map((o, i) => ({ id: o.id, code: o.code, semesterId: sem.id, candidates: counts[i], teacherId: o.lecturerId })),
+        venues.map((v) => ({ id: v.id, name: v.name, capacity: v.rows * v.cols - ((v.disabledSeats as unknown[]) ?? []).length, examHall: !v.isClassroom })),
+        teachers,
+        examSlots(sem.examStart, sem.examEnd),
+      );
+      for (const s of sched.sessions) {
+        const off = offs.find((o) => o.id === s.offeringIds[0])!;
+        const title = modulesByProgramme.BSCC.find((m) => m.code === off.code)?.title ?? off.code;
+        await prisma.examSession.create({
+          data: { title: `Final exam — ${off.code} ${title} (BSCC Sep 2026, Sem 1)`, kind: 'FINAL', seatingMode: 'MIXED', semesterId: sem.id, date: s.date, startTime: s.startTime, durationMin: s.durationMin, generatedBy: 'auto', offerings: { connect: [{ id: off.id }] }, venues: { connect: s.venueIds.map((id) => ({ id })) }, invigilators: { create: s.invigilators } },
+        });
+      }
+      auditRows.push({ actorId: null, action: 'exams.schedule', entityType: 'Semester', entityId: sem.id, after: { generatedBy: 'auto', sessions: sched.sessions.length }, createdAt: date(2026, 11, 16, 6) });
+    }
   }
 
   // ---------- audit log + notifications ----------

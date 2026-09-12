@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
@@ -70,6 +70,10 @@ const PX_PER_MIN = 1.1;
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const todayIso = () => new Date().toISOString().slice(0, 10);
+const plusDaysIso = (d: number) => new Date(Date.now() + d * 86400e3).toISOString().slice(0, 10);
+const subscribeNoop = () => () => {};
+/** Today's date read through an external-store hook so rendering stays pure. */
+const useToday = () => useSyncExternalStore(subscribeNoop, todayIso, todayIso);
 
 function weekOfDate(sem: Semester, iso: string): number {
   const start = new Date(sem.startDate);
@@ -94,18 +98,18 @@ export default function TimetablePage() {
   const [teacherId, setTeacherId] = useState('all');
   const [venueId, setVenueId] = useState('all');
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const today = useToday();
+  const soon = useSyncExternalStore(subscribeNoop, () => plusDaysIso(21), () => plusDaysIso(21));
 
-  // Default: the semester that contains today (prefer one with a timetable), else the newest.
+  // Default: the semester running (or starting within three weeks) with the most classes, else the fullest overall.
   const sem = useMemo(() => {
     if (!semesters.data?.length) return undefined;
     if (semesterId) return semesters.data.find((s) => s.id === semesterId);
-    const t = todayIso();
-    const soon = new Date(Date.now() + 21 * 86400e3).toISOString().slice(0, 10);
-    const running = semesters.data.filter((s) => s.startDate.slice(0, 10) <= soon && s.endDate.slice(0, 10) >= t);
+    const running = semesters.data.filter((s) => s.startDate.slice(0, 10) <= soon && s.endDate.slice(0, 10) >= today);
     const bySlots = (a: Semester, b: Semester) => b._count.slots - a._count.slots;
     return [...running].sort(bySlots)[0] ?? [...semesters.data].sort(bySlots)[0];
-  }, [semesters.data, semesterId]);
-  const effectiveWeek = week || (sem ? Math.min(Math.max(weekOfDate(sem, todayIso()), 1), sem.teachingWeeks + 2) : 1);
+  }, [semesters.data, semesterId, today, soon]);
+  const effectiveWeek = week || (sem ? Math.min(Math.max(weekOfDate(sem, today), 1), sem.teachingWeeks + 2) : 1);
 
   const query = qs({ semesterId: sem?.id, week: effectiveWeek, sectionId: isStaff ? sectionId : undefined, teacherId: isStaff ? teacherId : undefined, venueId: isStaff ? venueId : undefined });
   const wk = useQuery({ queryKey: ['tt', 'week', query], queryFn: () => api<Week>(`/api/timetable/week${query}`), enabled: !!sem });
@@ -185,7 +189,7 @@ export default function TimetablePage() {
           <div className="grid min-w-[900px]" style={{ gridTemplateColumns: '56px repeat(7, minmax(0, 1fr))' }}>
             <div className="border-b border-r bg-muted/40" />
             {wk.data.days.map((d, i) => {
-              const isToday = d.date === todayIso();
+              const isToday = d.date === today;
               return (
                 <button key={d.date} onClick={() => setSelectedDay(d.date)} className={cn('border-b border-r px-2 py-2 text-left text-xs hover:bg-accent', isToday && 'bg-primary/10')}>
                   <div className="font-semibold">{DAYS[i]}</div>
