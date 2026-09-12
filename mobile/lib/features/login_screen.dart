@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../core/api.dart';
 import '../core/auth.dart';
 import '../core/config.dart';
+import '../core/theme.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -38,7 +39,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final baseUrl = ref.watch(apiBaseUrlProvider).value ?? kDefaultApiUrl;
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign in'), actions: [IconButton(icon: const Icon(Icons.settings), onPressed: () => context.push('/settings'))]),
+      appBar: AppBar(title: const Text('Sign in'), actions: [const ThemeToggleButton(), IconButton(icon: const Icon(Icons.settings), onPressed: () => context.push('/settings'))]),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         const Text('RTE Integrated Management System', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         Text('Islington College · $baseUrl', style: Theme.of(context).textTheme.bodySmall),

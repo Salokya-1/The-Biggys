@@ -6,6 +6,7 @@ import '../core/api.dart';
 import '../core/auth.dart';
 import '../core/config.dart';
 import '../core/data.dart';
+import '../core/theme.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -42,6 +43,24 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
         const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(children: [
+            const Icon(Icons.brightness_6_outlined),
+            const SizedBox(width: 16),
+            const Expanded(child: Text('Appearance')),
+            SegmentedButton<ThemeMode>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode_outlined), tooltip: 'Light'),
+                ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode_outlined), tooltip: 'Dark'),
+                ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.phone_android_outlined), tooltip: 'System'),
+              ],
+              selected: {ref.watch(themeModeProvider)},
+              onSelectionChanged: (s) => ref.read(themeModeProvider.notifier).set(s.first),
+            ),
+          ]),
+        ),
         ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('API settings'), subtitle: Text(baseUrl), onTap: () => context.push('/settings')),
         ListTile(leading: const Icon(Icons.logout), title: const Text('Sign out'), onTap: () => ref.read(authProvider.notifier).logout()),
         const SizedBox(height: 16),

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/auth.dart';
 import '../core/data.dart';
+import '../core/theme.dart';
 import '../widgets/common.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -13,7 +14,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user!;
     return Scaffold(
-      appBar: AppBar(title: Text('Hi, ${user.name.split(' ').first}')),
+      appBar: AppBar(title: Text('Hi, ${user.name.split(' ').first}'), actions: const [ThemeToggleButton()]),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(profileProvider);
