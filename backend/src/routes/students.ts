@@ -27,8 +27,11 @@ const studentBody = z.object({
   status: z.enum(['ACTIVE', 'DEFERRED', 'WITHDRAWN', 'GRADUATED']).optional(),
   standing: z.enum(['GOOD', 'RESIT', 'REVIEW']).optional(),
   specialNeedsSeating: z.boolean().optional(),
+  sectionId: z.string().min(1).nullable().optional(),
   createLogin: z.boolean().optional(),
   password: z.string().min(8).max(72).optional(),
+  /** Put them in the emptiest group and enrol them on the semester's modules. */
+  autoEnroll: z.boolean().optional(),
 });
 
 const studentSummary = {
@@ -184,9 +187,50 @@ export async function studentRoutes(app: FastifyInstance) {
     return loadProfile(id, u);
   });
 
+  /**
+   * Everything the enrolment form needs to fill itself in: the next free institutional ID, the
+   * group with the most room, and the semester the intake is currently in.
+   *
+   * Typing an ID by hand is how two students end up sharing one, and picking a group by hand is
+   * how one ends up with twenty-six people in a room of twenty.
+   */
+  app.get('/students/enrolment-defaults', { preHandler: [allow('student.write')] }, async (req) => {
+    const q = parse(z.object({ programmeId: z.string(), intakeId: z.string() }), req.query);
+    const intake = await prisma.intake.findUnique({
+      where: { id: q.intakeId },
+      include: {
+        programme: { select: { id: true, code: true } },
+        sections: { select: { id: true, name: true, _count: { select: { students: true } } } },
+        semesters: { orderBy: { number: 'desc' }, take: 1, select: { id: true, number: true, term: true } },
+      },
+    });
+    if (!intake || intake.programmeId !== q.programmeId) throw badRequest('That intake does not belong to that programme');
+
+    // Institutional IDs run <intake year, two digits><programme prefix><serial>, the same shape the
+    // seeded records use, so a new enrolment sorts alongside its cohort.
+    const last = await prisma.student.findFirst({
+      where: { intakeId: q.intakeId },
+      orderBy: { studentId: 'desc' },
+      select: { studentId: true },
+    });
+    const nextSerial = last ? String(Number(last.studentId.slice(-4)) + 1).padStart(4, '0') : '0001';
+    const stem = last ? last.studentId.slice(0, -4) : `${String(intake.startDate.getUTCFullYear()).slice(2)}${intake.programme.code.slice(-2)}`;
+
+    const sections = intake.sections
+      .map((s) => ({ id: s.id, name: s.name, students: s._count.students }))
+      .sort((a, b) => a.students - b.students || a.name.localeCompare(b.name));
+
+    return {
+      studentId: `${stem}${nextSerial}`,
+      suggestedSectionId: sections[0]?.id ?? null,
+      sections,
+      currentSemester: intake.semesters[0] ?? null,
+    };
+  });
+
   app.post('/students', { preHandler: [allow('student.write')] }, async (req, reply) => {
     const body = parse(studentBody, req.body);
-    const { createLogin, password, ...data } = body;
+    const { createLogin, password, autoEnroll, ...data } = body;
     if (createLogin && !data.email) throw badRequest('email is required to create a login');
     const intake = await prisma.intake.findUnique({ where: { id: data.intakeId } });
     if (!intake || intake.programmeId !== data.programmeId) throw badRequest('intake does not belong to programme');
@@ -212,12 +256,43 @@ export async function studentRoutes(app: FastifyInstance) {
         });
         userId = user.id;
       }
+      // A new enrolment that is not in a group and not on any module is a name in a list, so the
+      // whole placement happens here rather than as three more forms somebody has to remember.
+      let sectionId = data.sectionId ?? null;
+      let semesterId = data.currentSemesterId ?? null;
+      if (autoEnroll) {
+        const sections = await tx.section.findMany({
+          where: { intakeId: data.intakeId },
+          select: { id: true, name: true, _count: { select: { students: true } } },
+        });
+        if (!sectionId && sections.length) {
+          sectionId = [...sections].sort((a, b) => a._count.students - b._count.students || a.name.localeCompare(b.name))[0].id;
+        }
+        if (!semesterId) {
+          const sem = await tx.semester.findFirst({ where: { intakeId: data.intakeId }, orderBy: { number: 'desc' }, select: { id: true } });
+          semesterId = sem?.id ?? null;
+        }
+      }
+
       const s = await tx.student.create({
-        data: { ...data, email: data.email ?? null, currentSemesterId: data.currentSemesterId ?? null, userId },
+        data: { ...data, email: data.email ?? null, sectionId, currentSemesterId: semesterId, userId },
         select: studentSummary,
       });
-      await audit(tx, { ...actorOf(req), action: 'student.create', entityType: 'Student', entityId: s.id, after: s });
-      return s;
+
+      let enrolled = 0;
+      if (autoEnroll && semesterId) {
+        const offerings = await tx.moduleOffering.findMany({ where: { semesterId }, select: { id: true } });
+        if (offerings.length) {
+          const res = await tx.enrollment.createMany({
+            data: offerings.map((o) => ({ studentId: s.id, moduleOfferingId: o.id })),
+            skipDuplicates: true,
+          });
+          enrolled = res.count;
+        }
+      }
+
+      await audit(tx, { ...actorOf(req), action: 'student.create', entityType: 'Student', entityId: s.id, after: { ...s, enrolled } });
+      return { ...s, enrolledModules: enrolled };
     });
     reply.code(201);
     return student;

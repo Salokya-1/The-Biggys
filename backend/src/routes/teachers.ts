@@ -5,6 +5,7 @@ import { idParam, parse } from '../lib/validation';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { actorOf, audit } from '../lib/audit';
 import { allow, requireRole, STAFF } from '../plugins/auth';
+import { notifyRole, notifyUsers } from '../lib/notify';
 import { CLASS_KIND_LABEL, TEACHING_DAYS, overlaps, toMinutes, type ClassKind } from '../lib/timetable';
 
 const DAY_NAME: Record<number, string> = { 7: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
@@ -15,6 +16,8 @@ const windowBody = z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
   endTime: z.string().regex(/^\d{2}:\d{2}$/),
   reason: z.string().trim().max(120).optional(),
+  /** Set once the person has seen which classes the window would take them out of. */
+  confirm: z.boolean().optional(),
 });
 
 /**
@@ -46,20 +49,90 @@ export async function teacherRoutes(app: FastifyInstance) {
       throw conflict(`You already have ${DAY_NAME[body.dayOfWeek]} marked unavailable across that time`);
     }
 
-    // A window that clashes with a class already in the routine is worth saying out loud, but not
-    // worth refusing: the class may be exactly what needs moving.
+    // Blocking an hour you are already teaching in is not refused — the class may be exactly what
+    // needs to move — but it is never done silently either. The first attempt comes back with the
+    // classes and who could take them; only a confirmed second attempt goes through, and then the
+    // cover is assigned and everybody affected is told.
     const clashes = await prisma.timetableSlot.findMany({
       where: { teacherId: id, dayOfWeek: body.dayOfWeek },
-      include: { moduleOffering: { select: { module: { select: { code: true } } } }, section: { select: { name: true } } },
+      include: {
+        moduleOffering: { select: { id: true, lecturerId: true, coLecturerId: true, module: { select: { code: true, title: true } } } },
+        section: { select: { id: true, name: true } },
+        groups: { select: { id: true } },
+      },
     });
-    const affected = clashes
-      .filter((c) => overlaps(c.startTime, c.endTime, body.startTime, body.endTime))
-      .map((c) => `${c.moduleOffering.module.code} ${c.section.name} ${c.startTime}–${c.endTime}`);
+    const affected = clashes.filter((c) => overlaps(c.startTime, c.endTime, body.startTime, body.endTime));
+    const describe = (c: (typeof affected)[number]) => `${c.moduleOffering.module.code} ${c.section.name} ${c.startTime}–${c.endTime}`;
 
-    const created = await prisma.teacherUnavailability.create({ data: { teacherId: id, ...body, reason: body.reason ?? null } });
-    await audit(prisma, { ...actorOf(req), action: 'teacher.unavailability.add', entityType: 'User', entityId: id, after: { ...body, affected } });
+    /** Somebody who already teaches the module, is not the person stepping out, and is free then. */
+    async function coverFor(slot: (typeof affected)[number]) {
+      const candidates = [slot.moduleOffering.lecturerId, slot.moduleOffering.coLecturerId].filter((x): x is string => !!x && x !== id);
+      for (const candidateId of candidates) {
+        const [busy, blocked] = await Promise.all([
+          prisma.timetableSlot.findMany({ where: { teacherId: candidateId, dayOfWeek: slot.dayOfWeek }, select: { startTime: true, endTime: true } }),
+          prisma.teacherUnavailability.findMany({ where: { teacherId: candidateId, dayOfWeek: slot.dayOfWeek }, select: { startTime: true, endTime: true } }),
+        ]);
+        const taken = [...busy, ...blocked].some((b) => overlaps(b.startTime, b.endTime, slot.startTime, slot.endTime));
+        if (!taken) return prisma.user.findUnique({ where: { id: candidateId }, select: { id: true, name: true } });
+      }
+      return null;
+    }
+
+    if (affected.length > 0 && !body.confirm) {
+      const withCover = await Promise.all(
+        affected.map(async (c) => {
+          const cover = await coverFor(c);
+          return { id: c.id, what: describe(c), cover: cover?.name ?? null };
+        }),
+      );
+      throw conflict(
+        `You are teaching ${affected.length} class${affected.length === 1 ? '' : 'es'} in that window. Block it anyway and hand ${affected.length === 1 ? 'it' : 'them'} over?`,
+        { needsConfirmation: true, classes: withCover },
+      );
+    }
+
+    const created = await prisma.teacherUnavailability.create({ data: { teacherId: id, dayOfWeek: body.dayOfWeek, startTime: body.startTime, endTime: body.endTime, reason: body.reason ?? null } });
+
+    const handovers: { what: string; cover: string | null }[] = [];
+    for (const slot of affected) {
+      const cover = await coverFor(slot);
+      if (cover) {
+        await prisma.timetableSlot.update({ where: { id: slot.id }, data: { teacherId: cover.id } });
+        await notifyUsers(prisma, [cover.id], {
+          type: 'class.cover',
+          title: `You are now teaching ${slot.moduleOffering.module.code}`,
+          body: `${DAY_NAME[slot.dayOfWeek]} ${slot.startTime}–${slot.endTime}, ${slot.section.name}. The usual lecturer has blocked that hour.`,
+          payload: { slotId: slot.id },
+        });
+      }
+      handovers.push({ what: describe(slot), cover: cover?.name ?? null });
+
+      // Whoever is sitting in that room needs to know before they turn up to it.
+      const sectionIds = [...new Set([slot.sectionId, ...slot.groups.map((g) => g.id)])];
+      const students = await prisma.student.findMany({ where: { sectionId: { in: sectionIds }, deletedAt: null, userId: { not: null } }, select: { userId: true } });
+      await notifyUsers(prisma, students.map((s) => s.userId!), {
+        type: 'class.changed',
+        title: `${slot.moduleOffering.module.code}: change of lecturer`,
+        body: cover
+          ? `${DAY_NAME[slot.dayOfWeek]} ${slot.startTime}–${slot.endTime} will be taken by ${cover.name}. Time and room are unchanged.`
+          : `${DAY_NAME[slot.dayOfWeek]} ${slot.startTime}–${slot.endTime} has no lecturer yet — RTE is arranging cover and will confirm.`,
+        payload: { slotId: slot.id },
+      });
+    }
+
+    // Anything left without cover is RTE's to place, so RTE hears about it by name.
+    const uncovered = handovers.filter((h) => !h.cover);
+    if (uncovered.length > 0) {
+      await notifyRole(prisma, 'ADMIN', {
+        type: 'class.cover.needed',
+        title: `${uncovered.length} class${uncovered.length === 1 ? '' : 'es'} need a lecturer`,
+        body: uncovered.map((h) => h.what).join('; '),
+      });
+    }
+
+    await audit(prisma, { ...actorOf(req), action: 'teacher.unavailability.add', entityType: 'User', entityId: id, after: { ...body, handovers } });
     reply.code(201);
-    return { ...created, day: DAY_NAME[created.dayOfWeek], affectedClasses: affected };
+    return { ...created, day: DAY_NAME[created.dayOfWeek], affectedClasses: handovers.map((h) => h.what), handovers };
   });
 
   app.delete('/teachers/unavailability/:id', { preHandler: [requireRole(...STAFF)] }, async (req) => {

@@ -4,7 +4,9 @@ import { ACTIONS, can, effectiveActions, roleHas } from '../lib/actions';
 describe('permission matrix', () => {
   it('students hold only their own capabilities', () => {
     const student = effectiveActions('STUDENT');
-    expect(student.sort()).toEqual(['assistant.use', 'request.create', 'timetable.read'].sort());
+    // Students now also message people and put queries to the office; both are theirs to start,
+    // and neither lets them see anybody else's record.
+    expect(student.sort()).toEqual(['assistant.use', 'message.use', 'query.raise', 'request.create', 'timetable.read'].sort());
   });
 
   // Held by nobody by default: RTE gates admit cards on paid or unpaid and does not need the
