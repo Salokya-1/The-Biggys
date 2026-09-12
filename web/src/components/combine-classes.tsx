@@ -21,9 +21,11 @@ interface Candidate {
   teacher: string;
   venue: string | null;
   headcount: number;
+  course: string | null;
+  sameCourse: boolean;
 }
 interface Combinable {
-  slot: Omit<Candidate, 'headcount'>;
+  slot: Omit<Candidate, 'headcount' | 'sameCourse'>;
   kind: string;
   module: { code: string; title: string };
   currentHeadcount: number;
@@ -71,7 +73,7 @@ export function CombineClasses({ slotId, onDone }: { slotId: string; onDone?: ()
           <DialogHeader>
             <DialogTitle>Combine {d ? `${d.module.code} classes` : 'classes'}</DialogTitle>
             <DialogDescription>
-              The groups you tick join this class. Everyone ends up in one room at one time, so pick a room that holds them all. The other bookings are released.
+              The groups you tick join this class. Everyone ends up in one room at one time, so pick a room that holds them all. The other bookings are released. Another course taking the same module can join; a different module cannot.
             </DialogDescription>
           </DialogHeader>
 
@@ -102,6 +104,9 @@ export function CombineClasses({ slotId, onDone }: { slotId: string; onDone?: ()
                     />
                     <span className="min-w-0 flex-1">
                       <span className="font-medium">{c.groups.join('+')}</span>
+                      {!c.sameCourse && c.course ? (
+                        <span className="ml-2 rounded border px-1 py-0.5 text-[11px] text-muted-foreground">{c.course}</span>
+                      ) : null}
                       <span className="ml-2 text-muted-foreground">{c.day} {c.startTime}–{c.endTime}{c.venue ? ` · ${c.venue}` : ''} · {c.teacher}</span>
                     </span>
                     <span className="tabular-nums text-muted-foreground">{c.headcount}</span>

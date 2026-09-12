@@ -12,7 +12,7 @@ export const isoDow = (d: Date) => ((d.getUTCDay() + 6) % 7) + 1; // 1 = Monday
 
 const slotInclude = {
   section: { select: { id: true, name: true, intake: { select: { id: true, label: true, programme: { select: { code: true } } } } } },
-  moduleOffering: { select: { id: true, module: { select: { code: true, title: true } } } },
+  moduleOffering: { select: { id: true, module: { select: { code: true, title: true, programmeId: true, programme: { select: { code: true, name: true } } } } } },
   groups: { select: { id: true, name: true } },
   teacher: { select: { id: true, name: true } },
   venue: { select: { id: true, name: true, building: true } },

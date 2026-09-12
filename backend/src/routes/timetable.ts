@@ -253,8 +253,17 @@ export async function timetableRoutes(app: FastifyInstance) {
     const { id } = parse(idParam, req.params);
     const slot = await prisma.timetableSlot.findUnique({ where: { id }, include: { ...slotInclude, groups: { select: { id: true, name: true } } } });
     if (!slot) throw notFound('Class not found');
+    // Two courses teaching the same module can sit in one room; two different modules cannot,
+    // however convenient the hour. So the candidates are every class of a module with this code
+    // running in a semester that starts on the same day — the same course's other groups, and the
+    // other courses that share the module.
+    const alignedSemesters = await prisma.semester.findMany({ where: { startDate: slot.semester.startDate }, select: { id: true } });
+    const sharedOfferings = await prisma.moduleOffering.findMany({
+      where: { semesterId: { in: alignedSemesters.map((s) => s.id) }, module: { code: slot.moduleOffering.module.code } },
+      select: { id: true },
+    });
     const others = await prisma.timetableSlot.findMany({
-      where: { moduleOfferingId: slot.moduleOfferingId, kind: slot.kind, NOT: { id } },
+      where: { moduleOfferingId: { in: sharedOfferings.map((o) => o.id) }, kind: slot.kind, NOT: { id } },
       include: { ...slotInclude, groups: { select: { id: true, name: true } } },
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     });
@@ -270,6 +279,8 @@ export async function timetableRoutes(app: FastifyInstance) {
       groups: (s.groups.length ? s.groups : [{ name: s.section.name }]).map((g) => g.name),
       teacher: s.teacher.name,
       venue: s.venue?.name ?? null,
+      course: s.moduleOffering.module.programme?.code ?? null,
+      sameCourse: s.moduleOffering.module.programmeId === slot.moduleOffering.module.programmeId,
     });
     return {
       slot: shape(slot),
@@ -289,10 +300,14 @@ export async function timetableRoutes(app: FastifyInstance) {
     if (slots.length !== slotIds.length) throw notFound('One of those classes no longer exists');
 
     const first = slots[0];
-    const sameModule = slots.every((s) => s.moduleOfferingId === first.moduleOfferingId);
-    if (!sameModule) throw badRequest('Only classes of the same module can be combined');
-    const sameSemester = slots.every((s) => s.semesterId === first.semesterId);
-    if (!sameSemester) throw badRequest('Those classes belong to different semesters');
+    // Same module, whoever is teaching it to whom. Different courses running the same module are
+    // exactly the case worth merging; two different modules never are.
+    const code = first.moduleOffering.module.code;
+    if (!slots.every((s) => s.moduleOffering.module.code === code)) {
+      throw badRequest('Only classes of the same module can be combined — the same module taught to another course is fine, a different module is not');
+    }
+    const starts = new Set(slots.map((s) => s.semester.startDate.getTime()));
+    if (starts.size > 1) throw badRequest('Those classes belong to semesters that run at different times of year');
     if (!slots.every((s) => s.kind === first.kind)) throw badRequest('Combine classes of the same kind — a lecture with a lecture, not a lecture with a lab');
 
     // Everyone ends up in one room at one time, so the room has to hold all of them.

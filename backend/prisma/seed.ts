@@ -12,6 +12,7 @@
  * All names and numbers are invented. No real student data.
  */
 import 'dotenv/config';
+import { MODULE_STAFF, STAFF_DISCIPLINE } from './allocation-map';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient, type ClassKind, type MarkSheetStatus, type Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -158,7 +159,7 @@ async function main() {
   const programmes = [
     { code: 'BSCC', name: 'BSc (Hons) Computing', level: 'Undergraduate (London Metropolitan University)', idPrefix: '01', history: true },
     { code: 'BABA', name: 'BA (Hons) Business Administration', level: 'Undergraduate (London Metropolitan University)', idPrefix: '02', history: true },
-    { code: 'BSCNIS', name: 'BSc (Hons) Computer Networking & IT Security', level: 'Undergraduate (London Metropolitan University)', idPrefix: '03', history: false },
+    { code: 'BSCNIS', name: 'BSc (Hons) Computer Networking & IT Security', level: 'Undergraduate (London Metropolitan University)', idPrefix: '03', history: true },
     { code: 'BSCMT', name: 'BSc (Hons) Multimedia Technologies', level: 'Undergraduate (London Metropolitan University)', idPrefix: '04', history: false },
     { code: 'BSCAI', name: 'BSc (Hons) Computing with Artificial Intelligence', level: 'Undergraduate (London Metropolitan University)', idPrefix: '05', history: false },
     { code: 'BAAF', name: 'BA (Hons) Accounting & Finance', level: 'Undergraduate (London Metropolitan University)', idPrefix: '06', history: false },
@@ -384,20 +385,47 @@ async function main() {
   };
 
   const leadersByYear = [leaderCS.id, leaderCS2.id, leaderBM.id];
-  // Two teachers per module, taken from the faculty in turn so the load is spread evenly.
-  let staffCursor = 0;
+
+  // Who teaches what comes from the college's own allocation sheet. Handing modules out by walking
+  // the staff list is what put a networking lecturer in front of a BBA accounting class, so the
+  // sheet decides first and only modules it does not cover fall back — and then only to staff who
+  // teach on that side of the college.
+  const idByName = new Map(faculty.map((f) => [f.name, f.id]));
+  const disciplineOf = (programme: string): 'IT' | 'BUSINESS' => (programme.startsWith('BSC') ? 'IT' : 'BUSINESS');
+  const poolFor = (d: 'IT' | 'BUSINESS') =>
+    faculty.filter((f) => {
+      const s = STAFF_DISCIPLINE[f.name];
+      return s === d || s === 'BOTH' || (s === undefined && d === 'IT');
+    });
+  const pools: Record<'IT' | 'BUSINESS', typeof faculty> = { IT: poolFor('IT'), BUSINESS: poolFor('BUSINESS') };
+  const cursor: Record<'IT' | 'BUSINESS', number> = { IT: 0, BUSINESS: 0 };
+
   const teacherPairFor = new Map<string, [string, string]>();
   const pairFor = (programme: string, code: string): [string, string] => {
     const key = `${programme}:${code}`;
     const found = teacherPairFor.get(key);
     if (found) return found;
-    // Walk the faculty from opposite ends, so the second teacher of a module is never the first
-    // teacher of the module next to it and nobody ends up with three modules to cover.
-    const n = faculty.length;
-    const a = faculty[staffCursor % n].id;
-    const b = faculty[(staffCursor + Math.floor(n / 2)) % n].id;
-    staffCursor += 1;
-    const pair: [string, string] = [a, b];
+
+    const d = disciplineOf(programme);
+    const chosen: string[] = [];
+    for (const name of MODULE_STAFF[code] ?? []) {
+      const id = idByName.get(name);
+      if (id && !chosen.includes(id)) chosen.push(id);
+      if (chosen.length === 2) break;
+    }
+    // A module the sheet does not list, or one it lists a single name against, is topped up from
+    // the right pool in turn so the load still spreads.
+    const pool = pools[d].length ? pools[d] : faculty;
+    let guard = 0;
+    while (chosen.length < 2 && guard < pool.length * 2) {
+      const cand = pool[cursor[d] % pool.length].id;
+      cursor[d] += 1;
+      guard += 1;
+      if (!chosen.includes(cand)) chosen.push(cand);
+    }
+    while (chosen.length < 2) chosen.push(faculty[chosen.length % faculty.length].id);
+
+    const pair: [string, string] = [chosen[0], chosen[1]];
     teacherPairFor.set(key, pair);
     return pair;
   };
