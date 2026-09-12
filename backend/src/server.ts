@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { config, isProd } from './config';
 import { buildApp } from './app';
 import { prisma } from './lib/prisma';
+import { autoScheduleDueExams } from './services/exams';
 
 /** Belt and braces: apply pending migrations before listening (idempotent). */
 function runMigrations(log: (msg: string) => void) {
@@ -45,6 +46,12 @@ async function main() {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   await app.listen({ port: config.PORT, host: config.HOST });
+
+  // Exam schedules are generated automatically three weeks before each exam window (checked on start and every 6 h).
+  const runScheduler = () =>
+    autoScheduleDueExams((msg, data) => app.log.info(data ?? {}, msg)).catch((err) => app.log.error({ err }, 'exam auto-scheduler failed'));
+  setTimeout(runScheduler, 5_000).unref();
+  setInterval(runScheduler, 6 * 60 * 60 * 1000).unref();
 }
 
 main().catch((err) => {

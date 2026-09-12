@@ -15,6 +15,11 @@ import { studentRoutes } from './routes/students';
 import { markSheetRoutes } from './routes/marksheets';
 import { examRoutes } from './routes/exams';
 import { dashboardRoutes } from './routes/dashboard';
+import { timetableRoutes } from './routes/timetable';
+import { requestRoutes } from './routes/requests';
+import { feeRoutes } from './routes/fees';
+import { retakeRoutes } from './routes/retakes';
+import { assistantRoutes } from './routes/assistant';
 import multipart from '@fastify/multipart';
 
 export async function buildApp() {
@@ -90,6 +95,11 @@ export async function buildApp() {
       await api.register(markSheetRoutes);
       await api.register(examRoutes);
       await api.register(dashboardRoutes);
+      await api.register(timetableRoutes);
+      await api.register(requestRoutes);
+      await api.register(feeRoutes);
+      await api.register(retakeRoutes);
+      await api.register(assistantRoutes);
     },
     { prefix: '/api' },
   );

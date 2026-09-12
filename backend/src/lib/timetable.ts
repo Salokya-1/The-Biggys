@@ -67,13 +67,31 @@ export function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: str
 
 const key = (p: Period) => `${p.dayOfWeek}:${p.startTime}`;
 
-export function generateTimetable(sections: TtSection[], offerings: TtOffering[], rooms: TtRoom[], periods: Period[] = DEFAULT_PERIODS): TtResult {
+/** Bookings that already exist (e.g. another semester running in the same weeks) and must be respected. */
+export interface ExistingBooking {
+  teacherId: string;
+  venueId: string | null;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
+export function generateTimetable(sections: TtSection[], offerings: TtOffering[], rooms: TtRoom[], periods: Period[] = DEFAULT_PERIODS, existing: ExistingBooking[] = []): TtResult {
   const teacherBusy = new Map<string, Set<string>>(); // teacherId -> period keys
   const sectionBusy = new Map<string, Set<string>>();
   const roomBusy = new Map<string, Set<string>>(); // period key -> room ids
   const slots: TtSlot[] = [];
   const unplaced: TtResult['unplaced'] = [];
   const busy = (m: Map<string, Set<string>>, k: string) => m.get(k) ?? m.set(k, new Set()).get(k)!;
+
+  // Pre-book teachers and rooms used by concurrent timetables in any period they overlap.
+  for (const b of existing) {
+    for (const p of periods) {
+      if (p.dayOfWeek !== b.dayOfWeek || !overlaps(p.startTime, p.endTime, b.startTime, b.endTime)) continue;
+      busy(teacherBusy, b.teacherId).add(key(p));
+      if (b.venueId) busy(roomBusy, key(p)).add(b.venueId);
+    }
+  }
 
   const orderedRooms = [...rooms].sort((a, b) => a.capacity - b.capacity || a.name.localeCompare(b.name)); // smallest fitting room first
   const orderedSections = [...sections].sort((a, b) => a.name.localeCompare(b.name));

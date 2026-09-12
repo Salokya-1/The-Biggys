@@ -77,6 +77,7 @@ export function generateExamSchedule(offerings: ExOffering[], venues: ExVenue[],
   const ordered = [...offerings].sort((a, b) => b.candidates - a.candidates || a.code.localeCompare(b.code));
   const totalCapacity = venues.reduce((n, v) => n + v.capacity, 0);
 
+  const semesterDays = new Map<string, Set<string>>(); // semesterId -> dates already holding one of its exams
   let cursor = 0;
   for (const off of ordered) {
     if (off.candidates === 0) {
@@ -88,10 +89,14 @@ export function generateExamSchedule(offerings: ExOffering[], venues: ExVenue[],
       continue;
     }
     let placed = false;
+    // first pass: a semester's students get at most one exam per day; second pass relaxes that
+    for (const oneExamPerDay of [true, false]) {
     for (let i = 0; i < slots.length && !placed; i++) {
       const slot = slots[(cursor + i) % slots.length];
       const k = slotKey(slot);
+      const dayKey = slot.date.toISOString().slice(0, 10);
       if (set(semesterUse, k).has(off.semesterId)) continue;
+      if (oneExamPerDay && set(semesterDays, off.semesterId).has(dayKey)) continue;
       const used = set(venueUse, k);
       const chosen: ExVenue[] = [];
       let cap = 0;
@@ -119,9 +124,12 @@ export function generateExamSchedule(offerings: ExOffering[], venues: ExVenue[],
       for (const v of chosen) used.add(v.id);
       for (const inv of invigilators) busyTeachers.add(inv.userId);
       set(semesterUse, k).add(off.semesterId);
+      set(semesterDays, off.semesterId).add(dayKey);
       sessions.push({ offeringIds: [off.id], semesterId: off.semesterId, date: slot.date, startTime: slot.startTime, durationMin, venueIds: chosen.map((v) => v.id), invigilators, candidates: off.candidates });
       cursor = (cursor + i + 1) % slots.length;
       placed = true;
+    }
+    if (placed) break;
     }
     if (!placed) unscheduled.push({ offeringId: off.id, reason: 'no slot with enough free venue capacity in the exam window' });
   }

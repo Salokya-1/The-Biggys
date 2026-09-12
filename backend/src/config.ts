@@ -12,6 +12,8 @@ const schema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   RUN_MIGRATIONS_ON_START: z.enum(['true', 'false']).default('true'),
   GIT_SHA: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  OPENROUTER_MODEL: z.string().default('nvidia/nemotron-3-ultra-550b-a55b:free'),
 });
 
 const parsed = schema.safeParse(process.env);
