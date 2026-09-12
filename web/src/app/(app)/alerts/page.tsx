@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CheckCircle2, TriangleAlert, UserCheck, XCircle } from 'lucide-react';
@@ -36,6 +37,10 @@ export default function ClassAlertsPage() {
 
   const alerts = useQuery({ queryKey: ['class-alerts'], queryFn: () => api<ClassAlertRow[]>('/api/class-alerts'), refetchInterval: 30_000 });
   const teachers = useQuery({ queryKey: ['tt', 'teachers'], queryFn: () => api<{ id: string; name: string }[]>('/api/timetable/teachers') });
+  const broadcasts = useQuery({
+    queryKey: ['broadcasts'],
+    queryFn: () => api<{ id: string; title: string; body: string; sender: string; recipients: number; createdAt: string }[]>('/api/broadcasts'),
+  });
 
   const resolve = useMutation({
     mutationFn: (v: { id: string; status: 'COVER_ASSIGNED' | 'RESOLVED' | 'DISMISSED'; coverId?: string }) =>
@@ -72,6 +77,26 @@ export default function ClassAlertsPage() {
           </AlertDescription>
         </Alert>
       ) : null}
+
+      {/* Announcements land here too: an alerts screen that shows only the alarms misses the
+          notices that were sent out precisely so nobody has to raise one. */}
+      {(broadcasts.data ?? []).length > 0 && (
+        <Card className="rounded-none">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Announcements</CardTitle>
+            <CardDescription>Sent to everyone from the RTE office. <Link href="/announcements" className="underline">Send one</Link>.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(broadcasts.data ?? []).slice(0, 5).map((b) => (
+              <div key={b.id} className="min-w-0 border-l-2 border-primary bg-muted/40 p-2 text-sm">
+                <p className="font-medium break-words">{b.title}</p>
+                <p className="break-words whitespace-pre-wrap text-muted-foreground">{b.body}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{b.sender} · {b.recipients} recipients · {new Date(b.createdAt).toLocaleString()}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="rounded-none">
         <CardHeader className="pb-2">
