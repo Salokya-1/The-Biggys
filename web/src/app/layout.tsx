@@ -14,7 +14,6 @@ const roboto = Roboto({
 export const metadata: Metadata = {
   title: "KramIQ · RTE IMS · The Biggys",
   description: "RTE Integrated Management System — Islington Hackathon 2026",
-  icons: { icon: "/brand/kramiq-square.png", apple: "/brand/kramiq-square.png" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
