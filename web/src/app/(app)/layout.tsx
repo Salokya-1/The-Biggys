@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpen, GraduationCap, LayoutDashboard, LogOut, Users } from 'lucide-react';
+import { BookOpen, ClipboardCheck, GraduationCap, LayoutDashboard, LogOut, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,6 +22,7 @@ const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'MODULE_LEADER'] },
   { href: '/students', label: 'Students', icon: Users, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/modules', label: 'Modules', icon: BookOpen, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
+  { href: '/marksheets', label: 'Mark sheets', icon: ClipboardCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/me', label: 'My results', icon: GraduationCap, roles: ['STUDENT'] },
 ];
 

@@ -128,6 +128,22 @@ export const authApi = {
   me: () => api<AuthUser>('/auth/me'),
 };
 
+/** Fetch a file with the bearer token and trigger a browser download. */
+export async function downloadWithAuth(path: string, filename: string) {
+  const t = getTokens();
+  const res = await fetch(`${API_URL}${path}`, { headers: t ? { authorization: `Bearer ${t.accessToken}` } : {} });
+  if (!res.ok) throw new ApiError(`Download failed (${res.status})`, res.status);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Build a query string, skipping empty values. */
 export function qs(params: Record<string, string | number | boolean | undefined | null>): string {
   const p = new URLSearchParams();
