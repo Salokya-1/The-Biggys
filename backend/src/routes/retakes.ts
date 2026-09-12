@@ -46,7 +46,7 @@ export async function retakeRoutes(app: FastifyInstance) {
     return { year, candidates: [...byModule.values()].sort((a, b) => a.code.localeCompare(b.code)), totalStudents: new Set(candidates.map((c) => c.enrollment.studentId)).size, summers };
   });
 
-  app.post('/retakes/generate', { preHandler: [allow('seating.generate')] }, async (req) => {
+  app.post('/retakes/generate', { preHandler: [allow('retakes.run')] }, async (req) => {
     const { year } = parse(z.object({ year: z.number().int().min(2020).max(2100) }), req.body);
     const candidates = await retakeCandidates(year);
     if (candidates.length === 0) throw badRequest('No students with outstanding resits for that academic year');

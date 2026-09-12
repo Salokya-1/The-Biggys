@@ -7,6 +7,8 @@ import { actorOf, audit } from '../lib/audit';
 import { requireRole } from '../plugins/auth';
 import { notifyRole, notifyUsers } from '../lib/notify';
 import { parseDay, teacherConflicts } from '../services/calendar';
+import { checkReason } from '../lib/reason-check';
+import { Prisma } from '@prisma/client';
 
 const createBody = z.object({
   kind: z.enum(['TEACHER_ABSENCE', 'STUDENT_ABSENCE', 'SECTION_SWAP']),
@@ -24,7 +26,7 @@ const decideBody = z.object({
 const include = {
   requester: { select: { id: true, name: true, role: true, student: { select: { studentId: true, section: { select: { name: true } } } } } },
   decidedBy: { select: { id: true, name: true } },
-  slot: { select: { id: true, dayOfWeek: true, startTime: true, endTime: true, section: { select: { id: true, name: true } }, moduleOffering: { select: { module: { select: { code: true, title: true } } } }, teacher: { select: { id: true, name: true } } } },
+  slot: { select: { id: true, dayOfWeek: true, startTime: true, endTime: true, moduleOfferingId: true, section: { select: { id: true, name: true } }, moduleOffering: { select: { module: { select: { id: true, code: true, title: true, moduleLeaderId: true } } } }, teacher: { select: { id: true, name: true } } } },
   targetSection: { select: { id: true, name: true } },
 };
 
@@ -55,16 +57,38 @@ export async function requestRoutes(app: FastifyInstance) {
         if (target.id === st.sectionId) throw badRequest('You are already in that section');
       }
     }
-    const r = await prisma.changeRequest.create({ data: { kind: body.kind, requesterId: u.id, slotId: body.slotId ?? null, date, targetSectionId: body.targetSectionId ?? null, reason: body.reason }, include });
+    // Reject nonsense before it reaches the RTE queue; a thin-but-real reason is kept and flagged.
+    const reasonCheck = checkReason(body.reason);
+    if (reasonCheck.verdict === 'GIBBERISH') {
+      throw badRequest('Please write a real reason — this does not explain anything.', { reasonCheck });
+    }
+    const r = await prisma.changeRequest.create({
+      data: {
+        kind: body.kind,
+        requesterId: u.id,
+        slotId: body.slotId ?? null,
+        date,
+        targetSectionId: body.targetSectionId ?? null,
+        reason: body.reason,
+        reasonCheck: reasonCheck as unknown as Prisma.InputJsonValue,
+      },
+      include,
+    });
     await audit(prisma, { ...actorOf(req), action: 'request.create', entityType: 'ChangeRequest', entityId: r.id, after: body });
     const title = body.kind === 'TEACHER_ABSENCE' ? `Teacher absence: ${r.slot?.moduleOffering.module.code} on ${body.date}` : body.kind === 'STUDENT_ABSENCE' ? `Student absence request from ${u.name}` : `Section change request from ${u.name}`;
     await notifyRole(prisma, 'ADMIN', { type: 'request.created', title, body: body.reason, payload: { requestId: r.id } });
     if (body.kind === 'TEACHER_ABSENCE' && r.slot) {
-      const leader = await prisma.module.findFirst({ where: { code: r.slot.moduleOffering.module.code }, select: { moduleLeaderId: true } });
+      const leader = r.slot.moduleOffering.module;
       if (leader?.moduleLeaderId) await notifyUsers(prisma, [leader.moduleLeaderId], { type: 'request.created', title, body: body.reason, payload: { requestId: r.id } });
     }
     reply.code(201);
-    return r;
+    return { ...r, reasonCheck };
+  });
+
+  /** Live check used by the form so the writer sees the verdict before submitting. */
+  app.post('/requests/check-reason', async (req) => {
+    const { reason } = parse(z.object({ reason: z.string().max(500) }), req.body);
+    return checkReason(reason);
   });
 
   app.get('/requests', async (req) => {

@@ -115,6 +115,8 @@ model User {
   name         String
   role         Role
   isActive     Boolean   @default(true)
+  /// Per-user overrides on top of the role matrix: { "grant": ["fees.write"], "revoke": ["student.write"] }
+  permissions  Json?
   failedLogins Int       @default(0)
   lockedUntil  DateTime?
   createdAt    DateTime  @default(now())
@@ -251,7 +253,8 @@ model Student {
 
 model Module {
   id             String  @id @default(cuid())
-  code           String  @unique
+  /// Module codes are London Met codes; the same code can be delivered on more than one programme.
+  code           String
   title          String
   credits        Int
   semesterNumber Int
@@ -261,6 +264,9 @@ model Module {
   programme    Programme        @relation(fields: [programmeId], references: [id])
   moduleLeader User?            @relation("ModuleLeader", fields: [moduleLeaderId], references: [id])
   offerings    ModuleOffering[]
+
+  @@unique([programmeId, code])
+  @@index([code])
 }
 
 model ModuleOffering {
@@ -476,6 +482,8 @@ model ChangeRequest {
   date            DateTime
   targetSectionId String?
   reason          String
+  /// Automatic reason check: { "verdict": "OK|WEAK|GIBBERISH", "score": 0-100, "notes": [...], "checkedBy": "rules|ai" }
+  reasonCheck     Json?
   status          RequestStatus @default(PENDING)
   decidedById     String?
   decidedAt       DateTime?
@@ -541,6 +549,8 @@ model Venue {
   disabledSeats Json          @default("[]") // [{ "row": 3, "col": 4 }, ...]
   adjacencyMode AdjacencyMode @default(ROW)
   isClassroom   Boolean       @default(true)
+  /// Optional drawn layout: { "cells": { "3:4": "AISLE" | "DESK" | "OFF" }, "labelMode": "ROW_LETTER" | "NUMERIC" }
+  layout        Json?
 
   examSessions    ExamSession[]
   seatAllocations SeatAllocation[]

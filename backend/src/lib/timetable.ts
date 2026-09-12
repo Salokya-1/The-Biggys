@@ -3,15 +3,30 @@
  *
  * One constant weekly routine is produced for a semester and repeated for the teaching weeks.
  * Every (section × module offering) needs `sessionsPerWeek` periods. A period can be used only
- * if the section, the teacher and the room are all free, and the same section/module pair is
- * spread over different days where possible. Unplaceable sessions are reported, never dropped
- * silently.
+ * if the section, the teacher and the room are all free, and only if it respects the section's
+ * constraints: final-year groups finish by 10:00, and nobody gets a gap longer than two hours
+ * between classes on the same day. Unplaceable sessions are reported, never dropped silently.
  */
 
-export interface TtSection {
+export interface Period {
+  dayOfWeek: number; // 1 = Monday … 5 = Friday
+  startTime: string;
+  endTime: string;
+}
+
+export interface SectionConstraints {
+  /** Classes must finish by this time (final-year groups: "10:00"). */
+  latestEnd?: string;
+  /** Longest allowed gap between two classes on the same day, in minutes. */
+  maxGapMinutes?: number;
+}
+
+export interface TtSection extends SectionConstraints {
   id: string;
   name: string;
   size: number;
+  /** Period grid for this section; defaults to STANDARD_PERIODS. */
+  periods?: Period[];
 }
 
 export interface TtOffering {
@@ -27,12 +42,6 @@ export interface TtRoom {
   capacity: number;
 }
 
-export interface Period {
-  dayOfWeek: number; // 1 = Monday … 5 = Friday
-  startTime: string;
-  endTime: string;
-}
-
 export interface TtSlot {
   sectionId: string;
   offeringId: string;
@@ -45,89 +54,180 @@ export interface TtSlot {
 
 export interface TtResult {
   slots: TtSlot[];
-  unplaced: { sectionId: string; offeringId: string; missing: number }[];
+  unplaced: { sectionId: string; offeringId: string; missing: number; reason: string }[];
+  gapViolations: GapViolation[];
 }
 
-export const DEFAULT_PERIODS: Period[] = [1, 2, 3, 4, 5].flatMap((day) => [
-  { dayOfWeek: day, startTime: '08:00', endTime: '09:30' },
-  { dayOfWeek: day, startTime: '09:45', endTime: '11:15' },
-  { dayOfWeek: day, startTime: '11:30', endTime: '13:00' },
-  { dayOfWeek: day, startTime: '14:00', endTime: '15:30' },
-  { dayOfWeek: day, startTime: '15:45', endTime: '17:15' },
+const grid = (times: [string, string][]): Period[] =>
+  [1, 2, 3, 4, 5].flatMap((day) => times.map(([startTime, endTime]) => ({ dayOfWeek: day, startTime, endTime })));
+
+/** Standard day: five 90-minute blocks from 08:00 to 17:15. */
+export const STANDARD_PERIODS: Period[] = grid([
+  ['08:00', '09:30'],
+  ['09:45', '11:15'],
+  ['11:30', '13:00'],
+  ['14:00', '15:30'],
+  ['15:45', '17:15'],
 ]);
+
+/** Final-year day: three 60-minute blocks so the group is always finished by 10:00. */
+export const EARLY_PERIODS: Period[] = grid([
+  ['07:00', '08:00'],
+  ['08:00', '09:00'],
+  ['09:00', '10:00'],
+]);
+
+export const DEFAULT_PERIODS = STANDARD_PERIODS;
+export const DEFAULT_MAX_GAP_MIN = 120;
+/** Semesters 5 and 6 are the final year at Islington's three-year degrees. */
+export const isFinalYearSemester = (semesterNumber: number) => semesterNumber >= 5;
+export const periodsForSemester = (semesterNumber: number) => (isFinalYearSemester(semesterNumber) ? EARLY_PERIODS : STANDARD_PERIODS);
 
 export const toMinutes = (t: string) => {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 };
+export const fromMinutes = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 export function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
   return toMinutes(aStart) < toMinutes(bEnd) && toMinutes(bStart) < toMinutes(aEnd);
 }
 
-const key = (p: Period) => `${p.dayOfWeek}:${p.startTime}`;
-
-/** Bookings that already exist (e.g. another semester running in the same weeks) and must be respected. */
-export interface ExistingBooking {
-  teacherId: string;
-  venueId: string | null;
+interface Interval {
   dayOfWeek: number;
   startTime: string;
   endTime: string;
 }
 
-export function generateTimetable(sections: TtSection[], offerings: TtOffering[], rooms: TtRoom[], periods: Period[] = DEFAULT_PERIODS, existing: ExistingBooking[] = []): TtResult {
-  const teacherBusy = new Map<string, Set<string>>(); // teacherId -> period keys
-  const sectionBusy = new Map<string, Set<string>>();
-  const roomBusy = new Map<string, Set<string>>(); // period key -> room ids
+class Booking {
+  private byKey = new Map<string, Interval[]>();
+  add(key: string, i: Interval) {
+    const list = this.byKey.get(key) ?? [];
+    list.push(i);
+    this.byKey.set(key, list);
+  }
+  get(key: string): Interval[] {
+    return this.byKey.get(key) ?? [];
+  }
+  busy(key: string, p: Interval): boolean {
+    return this.get(key).some((i) => i.dayOfWeek === p.dayOfWeek && overlaps(i.startTime, i.endTime, p.startTime, p.endTime));
+  }
+}
+
+/** Would adding `p` leave the section with a gap longer than `maxGap` on that day? */
+export function breaksGapRule(dayIntervals: Interval[], p: Interval, maxGap = DEFAULT_MAX_GAP_MIN): boolean {
+  const day = [...dayIntervals.filter((i) => i.dayOfWeek === p.dayOfWeek), p].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+  for (let i = 1; i < day.length; i++) {
+    if (toMinutes(day[i].startTime) - toMinutes(day[i - 1].endTime) > maxGap) return true;
+  }
+  return false;
+}
+
+export interface GapViolation {
+  sectionId: string;
+  dayOfWeek: number;
+  after: string;
+  before: string;
+  gapMinutes: number;
+}
+
+/** Gaps longer than `maxGap` in a finished timetable, per section and day. */
+export function findGapViolations<T extends { sectionId: string; dayOfWeek: number; startTime: string; endTime: string }>(slots: T[], maxGap = DEFAULT_MAX_GAP_MIN): GapViolation[] {
+  const out: GapViolation[] = [];
+  const bySectionDay = new Map<string, T[]>();
+  for (const s of slots) {
+    const k = `${s.sectionId}:${s.dayOfWeek}`;
+    bySectionDay.set(k, [...(bySectionDay.get(k) ?? []), s]);
+  }
+  for (const [k, list] of bySectionDay) {
+    const [sectionId, day] = k.split(':');
+    const sorted = [...list].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+    for (let i = 1; i < sorted.length; i++) {
+      const gap = toMinutes(sorted[i].startTime) - toMinutes(sorted[i - 1].endTime);
+      if (gap > maxGap) out.push({ sectionId, dayOfWeek: Number(day), after: sorted[i - 1].endTime, before: sorted[i].startTime, gapMinutes: gap });
+    }
+  }
+  return out;
+}
+
+/** Bookings that already exist (e.g. another semester in the same weeks) and must be respected. */
+export interface ExistingBooking {
+  teacherId: string;
+  venueId: string | null;
+  sectionId?: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
+export function generateTimetable(
+  sections: TtSection[],
+  offerings: TtOffering[],
+  rooms: TtRoom[],
+  periodsOrUndefined: Period[] | undefined = undefined,
+  existing: ExistingBooking[] = [],
+): TtResult {
+  const teacherBusy = new Booking();
+  const sectionBusy = new Booking();
+  const roomBusy = new Booking();
   const slots: TtSlot[] = [];
   const unplaced: TtResult['unplaced'] = [];
-  const busy = (m: Map<string, Set<string>>, k: string) => m.get(k) ?? m.set(k, new Set()).get(k)!;
 
-  // Pre-book teachers and rooms used by concurrent timetables in any period they overlap.
   for (const b of existing) {
-    for (const p of periods) {
-      if (p.dayOfWeek !== b.dayOfWeek || !overlaps(p.startTime, p.endTime, b.startTime, b.endTime)) continue;
-      busy(teacherBusy, b.teacherId).add(key(p));
-      if (b.venueId) busy(roomBusy, key(p)).add(b.venueId);
-    }
+    const i = { dayOfWeek: b.dayOfWeek, startTime: b.startTime, endTime: b.endTime };
+    teacherBusy.add(b.teacherId, i);
+    if (b.venueId) roomBusy.add(b.venueId, i);
+    if (b.sectionId) sectionBusy.add(b.sectionId, i);
   }
 
   const orderedRooms = [...rooms].sort((a, b) => a.capacity - b.capacity || a.name.localeCompare(b.name)); // smallest fitting room first
   const orderedSections = [...sections].sort((a, b) => a.name.localeCompare(b.name));
   const orderedOfferings = [...offerings].sort((a, b) => a.code.localeCompare(b.code));
 
-  // Rotate the starting period per section so sections do not all pile onto Monday 08:00.
   orderedSections.forEach((section, si) => {
+    const periods = (section.periods ?? periodsOrUndefined ?? STANDARD_PERIODS).filter((p) => !section.latestEnd || toMinutes(p.endTime) <= toMinutes(section.latestEnd));
+    const maxGap = section.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN;
+
     orderedOfferings.forEach((offering, oi) => {
       const need = offering.sessionsPerWeek ?? 2;
       const usedDays = new Set<number>();
       let placed = 0;
-      const start = (si * 3 + oi * 7) % periods.length;
-      // two passes: first insisting on distinct days, then relaxing that
-      for (const distinctDays of [true, false]) {
+      let blocked = 'no free period with a room, teacher and section all available';
+      const start = (si * 3 + oi * 7) % Math.max(1, periods.length);
+
+      // pass 1: spread over distinct days and keep the day compact; pass 2: distinct days only; pass 3: anything free
+      for (const [distinctDays, respectGap] of [[true, true], [false, true], [false, false]] as const) {
         for (let i = 0; i < periods.length && placed < need; i++) {
           const p = periods[(start + i) % periods.length];
-          const k = key(p);
           if (distinctDays && usedDays.has(p.dayOfWeek)) continue;
-          if (busy(sectionBusy, section.id).has(k)) continue;
-          if (busy(teacherBusy, offering.teacherId).has(k)) continue;
-          const taken = busy(roomBusy, k);
-          const room = orderedRooms.find((r) => r.capacity >= section.size && !taken.has(r.id));
-          if (!room) continue;
+          if (sectionBusy.busy(section.id, p)) continue;
+          if (teacherBusy.busy(offering.teacherId, p)) continue;
+          if (respectGap && breaksGapRule(sectionBusy.get(section.id), p, maxGap)) {
+            blocked = `only periods that would leave a gap longer than ${maxGap / 60} h were free`;
+            continue;
+          }
+          const room = orderedRooms.find((r) => r.capacity >= section.size && !roomBusy.busy(r.id, p));
+          if (!room) {
+            blocked = 'no room of the right size was free';
+            continue;
+          }
           slots.push({ sectionId: section.id, offeringId: offering.id, teacherId: offering.teacherId, venueId: room.id, dayOfWeek: p.dayOfWeek, startTime: p.startTime, endTime: p.endTime });
-          busy(sectionBusy, section.id).add(k);
-          busy(teacherBusy, offering.teacherId).add(k);
-          taken.add(room.id);
+          sectionBusy.add(section.id, p);
+          teacherBusy.add(offering.teacherId, p);
+          roomBusy.add(room.id, p);
           usedDays.add(p.dayOfWeek);
           placed++;
         }
+        if (placed >= need) break;
       }
-      if (placed < need) unplaced.push({ sectionId: section.id, offeringId: offering.id, missing: need - placed });
+      if (placed < need) unplaced.push({ sectionId: section.id, offeringId: offering.id, missing: need - placed, reason: blocked });
     });
   });
 
-  return { slots: slots.sort((a, b) => a.dayOfWeek - b.dayOfWeek || toMinutes(a.startTime) - toMinutes(b.startTime) || a.sectionId.localeCompare(b.sectionId)), unplaced };
+  const ordered = slots.sort((a, b) => a.dayOfWeek - b.dayOfWeek || toMinutes(a.startTime) - toMinutes(b.startTime) || a.sectionId.localeCompare(b.sectionId));
+  const gapMap = new Map(sections.map((s) => [s.id, s.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN]));
+  const gapViolations = findGapViolations(ordered).filter((v) => v.gapMinutes > (gapMap.get(v.sectionId) ?? DEFAULT_MAX_GAP_MIN));
+  return { slots: ordered, unplaced, gapViolations };
 }
 
 export interface Clash {
@@ -156,10 +256,57 @@ export function findClashes<T extends { id: string; sectionId: string; teacherId
   return out;
 }
 
+export interface SlotCandidate {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  venueId: string;
+  venueName: string;
+  keepsRoom: boolean;
+  createsGap: boolean;
+}
+
+/**
+ * Free places a class could move to — used when a drag-and-drop lands on a clash, so the
+ * UI can offer "put it here instead" rather than just refusing.
+ */
+export function suggestSlots(args: {
+  periods: Period[];
+  section: { id: string; size: number; latestEnd?: string; maxGapMinutes?: number };
+  teacherId: string;
+  currentVenueId?: string | null;
+  rooms: TtRoom[];
+  existing: ExistingBooking[]; // every other booking in the same weeks (excluding the slot being moved)
+  limit?: number;
+}): SlotCandidate[] {
+  const { periods, section, teacherId, currentVenueId, rooms, existing, limit = 8 } = args;
+  const teacherBusy = new Booking();
+  const sectionBusy = new Booking();
+  const roomBusy = new Booking();
+  for (const b of existing) {
+    const i = { dayOfWeek: b.dayOfWeek, startTime: b.startTime, endTime: b.endTime };
+    teacherBusy.add(b.teacherId, i);
+    if (b.venueId) roomBusy.add(b.venueId, i);
+    if (b.sectionId) sectionBusy.add(b.sectionId, i);
+  }
+  const maxGap = section.maxGapMinutes ?? DEFAULT_MAX_GAP_MIN;
+  const usable = periods.filter((p) => !section.latestEnd || toMinutes(p.endTime) <= toMinutes(section.latestEnd));
+  const out: SlotCandidate[] = [];
+  for (const p of usable) {
+    if (sectionBusy.busy(section.id, p) || teacherBusy.busy(teacherId, p)) continue;
+    const free = rooms.filter((r) => r.capacity >= section.size && !roomBusy.busy(r.id, p)).sort((a, b) => Number(b.id === currentVenueId) - Number(a.id === currentVenueId) || a.capacity - b.capacity || a.name.localeCompare(b.name));
+    const room = free[0];
+    if (!room) continue;
+    out.push({ dayOfWeek: p.dayOfWeek, startTime: p.startTime, endTime: p.endTime, venueId: room.id, venueName: room.name, keepsRoom: room.id === currentVenueId, createsGap: breaksGapRule(sectionBusy.get(section.id), p, maxGap) });
+  }
+  return out
+    .sort((a, b) => Number(a.createsGap) - Number(b.createsGap) || Number(b.keepsRoom) - Number(a.keepsRoom) || a.dayOfWeek - b.dayOfWeek || toMinutes(a.startTime) - toMinutes(b.startTime))
+    .slice(0, limit);
+}
+
 /** Concrete calendar date of a weekly slot in week `week` (1-based) of a semester starting on `semesterStart`. */
 export function slotDate(semesterStart: Date, week: number, dayOfWeek: number): Date {
   const start = new Date(semesterStart);
-  // normalise the semester start to its Monday
   const offsetToMonday = (start.getUTCDay() + 6) % 7;
   const monday = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() - offsetToMonday));
   return new Date(monday.getTime() + ((week - 1) * 7 + (dayOfWeek - 1)) * 86400e3);

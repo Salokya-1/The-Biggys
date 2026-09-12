@@ -22,7 +22,7 @@ async function ownStudent(userId: string) {
 /** Semester fees (mock payment) and admit cards that unlock only once the fee is settled. */
 export async function feeRoutes(app: FastifyInstance) {
   // ---------- admin ----------
-  app.get('/fees', { preHandler: [allow('student.read')] }, async (req) => {
+  app.get('/fees', { preHandler: [allow('fees.read')] }, async (req) => {
     const q = parse(z.object({ semesterId: z.string().optional(), status: z.enum(['UNPAID', 'PAID', 'WAIVED']).optional(), q: z.string().optional() }), req.query);
     const items = await prisma.feeInvoice.findMany({
       where: {
@@ -38,7 +38,7 @@ export async function feeRoutes(app: FastifyInstance) {
     return { items, summary: summary.map((s) => ({ status: s.status, count: s._count._all, amount: Number(s._sum.amount ?? 0) })) };
   });
 
-  app.post('/fees/generate', { preHandler: [allow('student.write')] }, async (req) => {
+  app.post('/fees/generate', { preHandler: [allow('fees.write')] }, async (req) => {
     const { semesterId, amount, dueDate } = parse(z.object({ semesterId: z.string(), amount: z.number().positive(), dueDate: z.coerce.date() }), req.body);
     const students = await prisma.student.findMany({ where: { currentSemesterId: semesterId, deletedAt: null, feeInvoices: { none: { semesterId } } }, select: { id: true } });
     const res = await prisma.feeInvoice.createMany({ data: students.map((s) => ({ studentId: s.id, semesterId, amount, dueDate })) });
@@ -46,7 +46,7 @@ export async function feeRoutes(app: FastifyInstance) {
     return { created: res.count };
   });
 
-  app.patch('/fees/:id', { preHandler: [allow('student.write')] }, async (req) => {
+  app.patch('/fees/:id', { preHandler: [allow('fees.write')] }, async (req) => {
     const { id } = parse(idParam, req.params);
     const body = parse(z.object({ status: z.enum(['UNPAID', 'PAID', 'WAIVED']), method: z.string().max(40).optional(), reference: z.string().max(60).optional() }), req.body);
     const before = await prisma.feeInvoice.findUnique({ where: { id }, include: feeInclude });

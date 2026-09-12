@@ -186,6 +186,97 @@ export async function moduleRoutes(app: FastifyInstance) {
     return updated;
   });
 
+
+  /** Class list for a module offering: everyone enrolled, grouped by section, with their timetable. */
+  app.get('/offerings/:id/class-list', { preHandler: [allow('module.read')] }, async (req) => {
+    const { id } = parse(idParam, req.params);
+    const offering = await prisma.moduleOffering.findFirst({
+      where: { AND: [{ id }, offeringScope(req) ?? {}] },
+      include: {
+        module: { select: { code: true, title: true, credits: true, moduleLeader: { select: { name: true } } } },
+        semester: { select: { number: true, term: true, intake: { select: { label: true, programme: { select: { code: true, name: true } } } } } },
+        lecturer: { select: { id: true, name: true, email: true } },
+        components: { orderBy: { sortOrder: 'asc' } },
+        enrollments: {
+          where: { deletedAt: null },
+          include: {
+            student: {
+              select: {
+                id: true, studentId: true, name: true, email: true, status: true, standing: true, specialNeedsSeating: true,
+                section: { select: { id: true, name: true } },
+              },
+            },
+            results: { orderBy: { markSheetVersion: 'desc' }, take: 1, select: { grade: true, outcome: true, overallMark: true, markSheet: { select: { status: true } } } },
+          },
+          orderBy: { student: { studentId: 'asc' } },
+        },
+        slots: { include: { section: { select: { id: true, name: true } }, venue: { select: { name: true } }, teacher: { select: { name: true } } }, orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }] },
+      },
+    });
+    if (!offering) throw notFound('Module offering not found');
+
+    const rows = offering.enrollments.map((e) => ({
+      enrollmentId: e.id,
+      studentId: e.student.studentId,
+      name: e.student.name,
+      email: e.student.email,
+      section: e.student.section?.name ?? null,
+      sectionId: e.student.section?.id ?? null,
+      status: e.student.status,
+      standing: e.student.standing,
+      specialNeedsSeating: e.student.specialNeedsSeating,
+      attempt: e.attempt,
+      isResit: e.isResit,
+      result: e.results[0] ? { grade: e.results[0].grade, outcome: e.results[0].outcome, overallMark: Number(e.results[0].overallMark), published: e.results[0].markSheet.status === 'PUBLISHED' } : null,
+      studentRecordId: e.student.id,
+    }));
+    const bySection = [...new Set(rows.map((r) => r.section ?? 'Unassigned'))].sort().map((name) => ({
+      section: name,
+      students: rows.filter((r) => (r.section ?? 'Unassigned') === name),
+      classes: offering.slots.filter((s) => s.section.name === name).map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, venue: s.venue?.name ?? null, teacher: s.teacher.name })),
+    }));
+    return {
+      offering: {
+        id: offering.id,
+        module: offering.module,
+        semester: offering.semester,
+        lecturer: offering.lecturer,
+        components: offering.components,
+      },
+      total: rows.length,
+      resits: rows.filter((r) => r.isResit).length,
+      specialNeeds: rows.filter((r) => r.specialNeedsSeating).length,
+      sections: bySection,
+      students: rows,
+    };
+  });
+
+  /** The same list as a spreadsheet the module leader can print or mark up. */
+  app.get('/offerings/:id/class-list.csv', { preHandler: [allow('module.read')] }, async (req, reply) => {
+    const { id } = parse(idParam, req.params);
+    const offering = await prisma.moduleOffering.findFirst({
+      where: { AND: [{ id }, offeringScope(req) ?? {}] },
+      include: {
+        module: { select: { code: true, title: true } },
+        semester: { select: { number: true, intake: { select: { label: true, programme: { select: { code: true } } } } } },
+        enrollments: {
+          where: { deletedAt: null },
+          include: { student: { select: { studentId: true, name: true, email: true, status: true, section: { select: { name: true } } } } },
+          orderBy: [{ student: { section: { name: 'asc' } } }, { student: { studentId: 'asc' } }],
+        },
+      },
+    });
+    if (!offering) throw notFound('Module offering not found');
+    const esc = (s: string) => (/[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
+    const header = ['Student ID', 'Name', 'Section', 'Email', 'Status', 'Attempt', 'Resit'].join(',');
+    const lines = offering.enrollments.map((e) =>
+      [e.student.studentId, e.student.name, e.student.section?.name ?? '', e.student.email ?? '', e.student.status, String(e.attempt), e.isResit ? 'yes' : 'no'].map(esc).join(','),
+    );
+    reply.header('content-type', 'text/csv; charset=utf-8');
+    reply.header('content-disposition', 'attachment; filename="' + offering.module.code + '-class-list.csv"');
+    return [header, ...lines].join('\r\n') + '\r\n';
+  });
+
   app.post('/offerings/:id/enrollments', { preHandler: [allow('student.write')] }, async (req, reply) => {
     const { id } = parse(idParam, req.params);
     const body = parse(enrolBody, req.body);

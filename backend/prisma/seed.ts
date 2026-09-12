@@ -14,7 +14,7 @@ import { PrismaClient, type MarkSheetStatus, type Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { computeGrade, type ComponentSpec } from '../src/lib/grading';
 import { generateSeating } from '../src/lib/seating';
-import { generateTimetable, type ExistingBooking } from '../src/lib/timetable';
+import { generateTimetable, isFinalYearSemester, periodsForSemester, type ExistingBooking } from '../src/lib/timetable';
 import { examSlots, generateExamSchedule } from '../src/lib/exam-schedule';
 
 const prisma = new PrismaClient();
@@ -88,9 +88,9 @@ async function main() {
   });
 
   // ---------- programmes, intakes, semesters ----------
-  // Real Islington College programme catalogue (islington.edu.np, London Metropolitan University awards).
-  // `history: true` programmes get three intakes with published results and a live pipeline; the others
-  // have just the Sep 2026 intake in its first semester.
+  // Real Islington College programme catalogue and London Metropolitan University module lists
+  // (islington.edu.np + "Modules with code and credit of Islington"). `history: true` programmes get
+  // three intakes with published results and a live pipeline; the others start with Sep 2026 only.
   const programmes = [
     { code: 'BSCC', name: 'BSc (Hons) Computing', level: 'Undergraduate (London Metropolitan University)', idPrefix: '01', history: true },
     { code: 'BABA', name: 'BA (Hons) Business Administration', level: 'Undergraduate (London Metropolitan University)', idPrefix: '02', history: true },
@@ -99,6 +99,7 @@ async function main() {
     { code: 'BSCAI', name: 'BSc (Hons) Computing with Artificial Intelligence', level: 'Undergraduate (London Metropolitan University)', idPrefix: '05', history: false },
     { code: 'BAAF', name: 'BA (Hons) Accounting & Finance', level: 'Undergraduate (London Metropolitan University)', idPrefix: '06', history: false },
   ];
+
   // Academic calendar: Autumn and Spring semesters of 14 weeks each (12 teaching + 2 exam weeks),
   // 28 weeks a year, summer break in between. Autumn starts mid-September, Spring mid-February.
   const week = 7 * 86400e3;
@@ -120,51 +121,14 @@ async function main() {
     { label: 'Sep 2026', year: 2026, semesters: 1, published: 0, inPipeline: null },
   ];
 
-  // Module titles follow the programme pages on islington.edu.np (Level 4 = semesters 1–2, Level 5 = 3–4).
-  const modulesByProgramme: Record<string, { code: string; title: string; sem: number; leader: string; comps: ComponentSpec[] }[]> = {
-    BSCC: [
-      { code: 'CS4001', title: 'Programming', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
-      { code: 'CS4002', title: 'Logic and Problem Solving', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
-      { code: 'CS4003', title: 'Computer Hardware and Software Architectures', sem: 2, leader: leaderCS.id, comps: cw60ex40(35) },
-      { code: 'CS4004', title: 'Fundamentals of Computing', sem: 2, leader: leaderCS.id, comps: three() },
-      { code: 'CS5001', title: 'Databases', sem: 3, leader: leaderCS2.id, comps: cw60ex40() },
-      { code: 'CS5002', title: 'Software Engineering', sem: 3, leader: leaderCS2.id, comps: cw60ex40() },
-      { code: 'CS5003', title: 'Advanced Programming and Technologies', sem: 4, leader: leaderCS2.id, comps: three() },
-      { code: 'CS5004', title: 'Data and Web Development', sem: 4, leader: leaderCS2.id, comps: cw60ex40() },
-    ],
-    BABA: [
-      { code: 'BM4001', title: 'Business Management and Practice', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
-      { code: 'BM4002', title: 'Marketing Principles', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
-      { code: 'BM4003', title: 'Financial Accounting for Business', sem: 2, leader: leaderBM.id, comps: three() },
-      { code: 'BM4004', title: 'Business Economics', sem: 2, leader: leaderBM.id, comps: cw60ex40(35) },
-      { code: 'BM5001', title: 'Managing People in Organisations', sem: 3, leader: leaderBM.id, comps: cw60ex40() },
-      { code: 'BM5002', title: 'Operations Management', sem: 3, leader: leaderBM.id, comps: cw60ex40() },
-      { code: 'BM5003', title: 'Strategic Management', sem: 4, leader: leaderBM.id, comps: three() },
-      { code: 'BM5004', title: 'Digital Business', sem: 4, leader: leaderBM.id, comps: cw60ex40() },
-    ],
-    BSCNIS: [
-      { code: 'NS4001', title: 'Introduction to Networking', sem: 1, leader: leaderCS2.id, comps: cw60ex40() },
-      { code: 'NS4002', title: 'Computer Systems and Architecture', sem: 1, leader: leaderCS2.id, comps: cw60ex40() },
-    ],
-    BSCMT: [
-      { code: 'MT4001', title: 'Digital Media Fundamentals', sem: 1, leader: leaderCS2.id, comps: three() },
-      { code: 'MT4002', title: 'Web Design and Development', sem: 1, leader: leaderCS2.id, comps: cw60ex40() },
-    ],
-    BSCAI: [
-      { code: 'AI4001', title: 'Programming', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
-      { code: 'AI4002', title: 'Mathematics for Artificial Intelligence', sem: 1, leader: leaderCS.id, comps: cw60ex40() },
-    ],
-    BAAF: [
-      { code: 'AF4001', title: 'Introduction to Financial Accounting', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
-      { code: 'AF4002', title: 'Business Economics', sem: 1, leader: leaderBM.id, comps: cw60ex40() },
-    ],
-  };
+  /** 60/40 coursework + exam, the common shape for a 15-credit module. */
   function cw60ex40(examMin?: number): ComponentSpec[] {
     return [
       { id: '', name: 'Coursework', weight: 60, maxMark: 100 },
       { id: '', name: 'Exam', weight: 40, maxMark: 100, componentPassMark: examMin ?? null },
     ];
   }
+  /** Two courseworks and an exam, used for 30-credit modules. */
   function three(): ComponentSpec[] {
     return [
       { id: '', name: 'Coursework 1', weight: 30, maxMark: 100 },
@@ -173,16 +137,208 @@ async function main() {
     ];
   }
 
+  // Year lists exactly as published; each year is split across its two semesters (60 credits each).
+  type Mod = { code: string; title: string; credits: number };
+  const CATALOGUE: Record<string, Mod[][]> = {
+    BSCC: [
+      [
+        { code: 'CC4057', title: 'Introduction to Information Systems', credits: 15 },
+        { code: 'CC4051', title: 'Fundamentals of Computing', credits: 15 },
+        { code: 'MA4001', title: 'Logic and Problem Solving', credits: 30 },
+        { code: 'CT4005', title: 'Computing Hardware and Software Architecture', credits: 30 },
+        { code: 'CS4001', title: 'Programming', credits: 30 },
+      ],
+      [
+        { code: 'CC5051', title: 'Databases', credits: 15 },
+        { code: 'CS5002', title: 'Software Engineering', credits: 30 },
+        { code: 'CT5052', title: 'Network Operating Systems', credits: 15 },
+        { code: 'CS5053', title: 'Cloud Computing and Internet of Things', credits: 15 },
+        { code: 'CS5054', title: 'Advanced Programming and Technologies', credits: 15 },
+        { code: 'CS5071', title: 'Professional and Ethical Issues', credits: 15 },
+        { code: 'CC5067', title: 'Smart Data Discovery', credits: 15 },
+      ],
+      [
+        { code: 'CU6051', title: 'Artificial Intelligence', credits: 15 },
+        { code: 'CC6012', title: 'Data and Web Development', credits: 30 },
+        { code: 'CS6004', title: 'Application Development', credits: 30 },
+        { code: 'CS6W50', title: 'Career Development Learning', credits: 15 },
+        { code: 'CS6P05', title: 'Project', credits: 30 },
+      ],
+    ],
+    BSCAI: [
+      [
+        { code: 'MA4010', title: 'Calculus and Linear Algebra', credits: 30 },
+        { code: 'CC4057', title: 'Introduction to Information Systems', credits: 15 },
+        { code: 'CC4051', title: 'Fundamentals of Computing', credits: 15 },
+        { code: 'CS4051', title: 'Fundamentals of Robotics and IoT', credits: 30 },
+        { code: 'CS4001', title: 'Programming', credits: 30 },
+      ],
+      [
+        { code: 'CS5003', title: 'Data Structure and Specialist Programming', credits: 30 },
+        { code: 'MA5053', title: 'Probability and Statistics', credits: 15 },
+        { code: 'MA5054', title: 'Further Calculus', credits: 15 },
+        { code: 'CC5061', title: 'Applied Data Science', credits: 15 },
+        { code: 'CS5002', title: 'Software Engineering', credits: 30 },
+        { code: 'CC5051', title: 'Databases', credits: 15 },
+      ],
+      [
+        { code: 'CT6008', title: 'Big Data and Data Mining', credits: 30 },
+        { code: 'CT6057', title: 'Computer Vision', credits: 15 },
+        { code: 'CC6057', title: 'Applied Machine Learning', credits: 15 },
+        { code: 'CU6051', title: 'Artificial Intelligence', credits: 15 },
+        { code: 'CS6P05', title: 'Project', credits: 30 },
+        { code: 'CS6W50', title: 'Career Development Learning', credits: 15 },
+      ],
+    ],
+    BSCNIS: [
+      [
+        { code: 'CC4005', title: 'Introduction to Networks', credits: 30 },
+        { code: 'CC4058', title: 'Introduction to Information Systems', credits: 15 },
+        { code: 'CC4059', title: 'Fundamentals of Computing', credits: 15 },
+        { code: 'CC4004', title: 'Cybersecurity Fundamentals', credits: 30 },
+        { code: 'CS4001', title: 'Programming', credits: 30 },
+      ],
+      [
+        { code: 'CT5009', title: 'Switching Routing and Wireless Essentials', credits: 30 },
+        { code: 'CC5052', title: 'Risk, Crisis and Security Management', credits: 15 },
+        { code: 'CC5068', title: 'Cloud Computing and the Internet of Things', credits: 15 },
+        { code: 'CC5009', title: 'Cybersecurity in Computing', credits: 30 },
+        { code: 'CT5054', title: 'Operating Systems', credits: 15 },
+        { code: 'CS5071', title: 'Professional and Ethical Issues', credits: 15 },
+      ],
+      [
+        { code: 'CT6009', title: 'Enterprise Networking Security and Automation', credits: 30 },
+        { code: 'CC6051', title: 'Ethical Hacking', credits: 15 },
+        { code: 'CC6011', title: 'Digital Investigation and E-Discovery', credits: 30 },
+        { code: 'CS6W50', title: 'Career Development Learning', credits: 15 },
+        { code: 'CS6P05', title: 'Project', credits: 30 },
+      ],
+    ],
+    BSCMT: [
+      [
+        { code: 'CU4051', title: '3D Modelling and Texturing', credits: 15 },
+        { code: 'CU4052', title: '3D Sculpting and Animation', credits: 15 },
+        { code: 'CU4060', title: 'Introduction to Drawing and Animation', credits: 15 },
+        { code: 'CU4050', title: '2D Computer Animation', credits: 15 },
+        { code: 'CU4062', title: 'Digital Imaging', credits: 15 },
+        { code: 'MD4056', title: 'Post-Production', credits: 15 },
+        { code: 'CC4057', title: 'Information System', credits: 15 },
+        { code: 'MD4053', title: 'Sound Design for Linear Media', credits: 15 },
+      ],
+      [
+        { code: 'CU5059', title: 'Anatomy and Character VFX', credits: 15 },
+        { code: 'CU5050', title: '3D Texturing and VFX', credits: 15 },
+        { code: 'CU5055', title: 'Advanced 3D Animation', credits: 15 },
+        { code: 'CU5056', title: 'Advanced 3D Modelling', credits: 15 },
+        { code: 'CU5062', title: 'Motion Graphics Design', credits: 15 },
+        { code: 'CU5065', title: 'VFX', credits: 15 },
+        { code: 'SM5088', title: 'Digital Project Management', credits: 15 },
+        { code: 'SM5094', title: 'Web Design', credits: 15 },
+      ],
+      [
+        { code: 'MD6051', title: 'Advanced Studio Engineering', credits: 15 },
+        { code: 'MD6053', title: 'Audio Mastering and Remastering', credits: 15 },
+        { code: 'CU6068', title: 'Portfolio Research, Design and Social Media', credits: 15 },
+        { code: 'CU6012', title: 'Portfolio Creation', credits: 15 },
+        { code: 'CS6P05', title: 'Project', credits: 30 },
+        { code: 'SM6082', title: 'Media Industry Careers', credits: 15 },
+        { code: 'CS6W50', title: 'Career Development Learning', credits: 15 },
+      ],
+    ],
+    BABA: [
+      [
+        { code: 'AC4053', title: 'Managing Accounting Fundamentals', credits: 15 },
+        { code: 'MN4079', title: 'People Management and Organisations', credits: 15 },
+        { code: 'MC4061', title: 'Principles of Marketing', credits: 15 },
+        { code: 'MN4083', title: 'Data Analysis for Business Decision Making', credits: 15 },
+        { code: 'AC4052', title: 'Financial Accounting', credits: 15 },
+        { code: 'FE4055', title: 'Understanding the Business and Economic Environment', credits: 15 },
+        { code: 'MN4084', title: 'Learning Through Organisations', credits: 15 },
+        { code: 'HR4056', title: 'Introduction to HRM in Contemporary Organisations', credits: 15 },
+      ],
+      [
+        { code: 'MN5067', title: 'Leadership in Practice', credits: 15 },
+        { code: 'MC5080', title: 'Marketing Communications', credits: 15 },
+        { code: 'LT5078', title: 'Sustainability, Business and Responsibility', credits: 15 },
+        { code: 'MN5055', title: 'Project Management', credits: 15 },
+        { code: 'BL5055', title: 'Company and Business Law', credits: 15 },
+        { code: 'MN5075', title: 'Operations & Supply Chain Management', credits: 15 },
+        { code: 'AC5063', title: 'Principles of Finance', credits: 15 },
+        { code: 'HR5053', title: 'Organisation Design and Management', credits: 15 },
+      ],
+      [
+        { code: 'MN6P07', title: 'Dissertation', credits: 30 },
+        { code: 'FE6006', title: 'International Business Environment and World Markets', credits: 30 },
+        { code: 'FE6063', title: 'Economics of Multinational Business', credits: 15 },
+        { code: 'MN6090', title: 'International Marketing and Sales in the Digital Era', credits: 15 },
+        { code: 'EC6065', title: 'International Trade and Finance', credits: 15 },
+        { code: 'MN6093', title: 'International Business Strategy', credits: 15 },
+      ],
+    ],
+    BAAF: [
+      [
+        { code: 'AC4052', title: 'Financial Accounting', credits: 15 },
+        { code: 'AC4053', title: 'Management Accounting Fundamentals', credits: 15 },
+        { code: 'AC4054', title: 'Management Information Systems', credits: 15 },
+        { code: 'AC4055', title: 'Data Science, Research and Analysis', credits: 15 },
+        { code: 'AC4056', title: 'Business Law and Ethics', credits: 15 },
+        { code: 'FE4055', title: 'Understanding the Business and Economic Environment', credits: 15 },
+        { code: 'FE4051', title: 'Introduction to Financial Markets and Institutions', credits: 15 },
+        { code: 'MN4084', title: 'Learning Through Organisations', credits: 15 },
+      ],
+      [
+        { code: 'AC5062', title: 'Financial Reporting', credits: 15 },
+        { code: 'AC5063', title: 'Principles of Finance', credits: 15 },
+        { code: 'AC5064', title: 'Taxation - Income Tax', credits: 15 },
+        { code: 'AC5065', title: 'Taxation - Corporate Tax', credits: 15 },
+        { code: 'AC5072', title: 'Performance Management', credits: 15 },
+        { code: 'BL5055', title: 'Company and Business Law', credits: 15 },
+        { code: 'FE5056', title: 'Problem Solving: Methods and Analysis', credits: 15 },
+        { code: 'MN5W50', title: 'Creating a Winning Business', credits: 15 },
+      ],
+      [
+        { code: 'AC6064', title: 'Advanced Financial Reporting', credits: 15 },
+        { code: 'AC6065', title: 'Financial Management', credits: 15 },
+        { code: 'AC6068', title: 'Audit and Assurance Services', credits: 15 },
+        { code: 'AC6070', title: 'Advanced Financial Accounting', credits: 15 },
+        { code: 'FE6055', title: 'Financial and Economic Modelling', credits: 15 },
+        { code: 'FE6060', title: 'Financial Engineering', credits: 15 },
+        { code: 'FE6P04A', title: 'Dissertation', credits: 15 },
+        { code: 'FE6P04S', title: 'Dissertation', credits: 15 },
+      ],
+    ],
+  };
+
+  const leadersByYear = [leaderCS.id, leaderCS2.id, leaderBM.id];
+  /** Split a published year list across its two semesters, keeping the credit load even. */
+  const modulesByProgramme: Record<string, { code: string; title: string; sem: number; leader: string; comps: ComponentSpec[] }[]> = Object.fromEntries(
+    Object.entries(CATALOGUE).map(([code, years]) => [
+      code,
+      years.flatMap((mods, yi) => {
+        const half = Math.ceil(mods.length / 2);
+        return mods.map((m, i) => ({
+          code: m.code,
+          title: m.title,
+          credits: m.credits,
+          sem: yi * 2 + (i < half ? 1 : 2),
+          leader: code.startsWith('B') && code.includes('A') && !code.startsWith('BSC') ? leaderBM.id : leadersByYear[yi],
+          comps: m.credits >= 30 ? three() : cw60ex40(),
+        }));
+      }),
+    ]),
+  );
+
   // The hero-demo pipeline states for the Sep 2025 intake, semester 2.
+  // Semester-2 modules of the Sep 2025 intakes carry the live result pipeline for the demo.
   const pipelineState: Record<string, MarkSheetStatus | 'EMPTY_DRAFT'> = {
-    CS4003: 'EMPTY_DRAFT', // lecturer@demo imports the CSV live
-    CS4004: 'SUBMITTED', // waiting for leader@demo
-    BM4003: 'UNDER_REVIEW',
-    BM4004: 'APPROVED', // admin publishes live
+    CT4005: 'EMPTY_DRAFT', // lecturer@demo imports the CSV live
+    CS4001: 'SUBMITTED', // waiting for leader@demo
+    AC4052: 'UNDER_REVIEW',
+    FE4055: 'APPROVED', // admin publishes live
   };
   // Lecturer assignment: lecturer@demo teaches CS4003 and CS4004 for the Sep 2025 intake, and CS4001 for Sep 2026.
   const lecturerFor = (code: string, intakeLabel: string) => {
-    if ((code === 'CS4003' || code === 'CS4004') && intakeLabel === 'Sep 2025') return lecturer.id;
+    if ((code === 'CT4005' || code === 'CS4001') && intakeLabel === 'Sep 2025') return lecturer.id;
     if (code === 'CS4001' && intakeLabel === 'Sep 2026') return lecturer.id;
     return pick(lecturers.slice(1)).id;
   };
@@ -333,7 +489,7 @@ async function main() {
           if (state === 'EMPTY_DRAFT') continue;
 
           // marks: ability per student (stable across modules via a hash of the id)
-          const cohortBias = it.label === 'Sep 2024' && code === 'CS4001' ? 22 : 0; // makes a "mean shift" flag on the next offering
+          const cohortBias = it.label === 'Sep 2024' && code === 'CC4057' ? 22 : 0; // makes a "mean shift" flag on the next offering
           const rows: { enrollmentId: string; attempt: number; isResit: boolean; marks: { componentId: string; rawMark: number | null; isAbsent: boolean }[] }[] = [];
           for (const e of enrollments) {
             const ability = clamp(gauss(56 + cohortBias, 13), 12, 96);
@@ -345,7 +501,7 @@ async function main() {
             rows.push({ enrollmentId: e.id, attempt: e.attempt, isResit: e.isResit, marks });
           }
           // data-quality issue: one published sheet with a student missing a mark (never validated because it was "migrated")
-          if (state === 'PUBLISHED' && code === 'BM4002' && it.label === 'Sep 2025') rows[3].marks[1] = { componentId: specs[1].id, rawMark: null, isAbsent: false };
+          if (state === 'PUBLISHED' && code === 'MC4061' && it.label === 'Sep 2025') rows[3].marks[1] = { componentId: specs[1].id, rawMark: null, isAbsent: false };
 
           await prisma.mark.createMany({ data: rows.flatMap((r) => r.marks.map((m) => ({ markSheetId: sheet.id, enrollmentId: r.enrollmentId, componentId: m.componentId, rawMark: m.rawMark, isAbsent: m.isAbsent }))) });
           auditRows.push({ actorId: lecturerId, action: 'import.commit', entityType: 'MarkSheet', entityId: sheet.id, after: { fileName: `${code}-${it.label.replace(' ', '')}.xlsx`, rowsCommitted: rows.length }, createdAt: new Date(sheetTimes.createdAt.getTime() + 3600e3) });
@@ -384,7 +540,7 @@ async function main() {
   }
 
   // ---------- a correction cycle: Sep 2024 CS5004 v1 published → correction requested → v2 draft ----------
-  const corr = offeringsAll.find((o) => o.code === 'CS5004' && o.intakeLabel === 'Sep 2024')!;
+  const corr = offeringsAll.find((o) => o.code === 'CS6004' && o.intakeLabel === 'Sep 2024')!;
   const v1 = await prisma.markSheet.findFirst({ where: { moduleOfferingId: corr.id, version: 1 }, include: { marks: true } });
   if (v1) {
     await prisma.markSheet.update({ where: { id: v1.id }, data: { status: 'CORRECTION_REQUESTED', lockVersion: { increment: 1 } } });
@@ -429,24 +585,24 @@ async function main() {
   await prisma.venue.create({ data: { name: 'Auditorium', building: 'Main Block', rows: 15, cols: 16, adjacencyMode: 'ROW', disabledSeats: [], isClassroom: false } });
 
   const sem2Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2025' && o.sem === 2);
-  const s1Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2026' && o.sem === 1 && ['BM4001', 'NS4001'].includes(o.code));
+  const s1Offerings = offeringsAll.filter((o) => o.intakeLabel === 'Sep 2026' && o.sem === 1 && ['AC4053', 'CC4005'].includes(o.code));
   await prisma.examSession.create({
     data: {
-      title: 'Semester 2 Resit Exams — Computer Architectures & Financial Accounting',
+      title: 'Semester 2 Resit Exams - Computing Architecture & Financial Accounting',
       kind: 'RESIT',
       date: date(2026, 9, 19),
       startTime: '09:00',
       durationMin: 120,
       seed: 7,
       semesterId: sem2Offerings[0]?.semesterId,
-      offerings: { connect: sem2Offerings.filter((o) => ['CS4003', 'BM4003'].includes(o.code)).map((o) => ({ id: o.id })) },
+      offerings: { connect: sem2Offerings.filter((o) => ['CT4005', 'AC4052'].includes(o.code)).map((o) => ({ id: o.id })) },
       venues: { connect: [{ id: lb101.id }, { id: lab3.id }] },
       generatedBy: 'manual',
     },
   });
   const midterm = await prisma.examSession.create({
     data: {
-      title: 'Class test — Business Management & Introduction to Networking (Sep 2026 intake)',
+      title: 'Class test - Managing Accounting Fundamentals & Introduction to Networks (Sep 2026 intake)',
       kind: 'CLASS_TEST',
       seatingMode: 'BY_ID',
       date: date(2026, 10, 24),
@@ -486,7 +642,15 @@ async function main() {
       const secs = sectionsByIntake.get(sem.intakeId) ?? [];
       const offs = offeringsAll.filter((o) => o.semesterId === sem.id);
       if (!secs.length || !offs.length) continue;
-      const r = generateTimetable(secs, offs.map((o) => ({ id: o.id, code: o.code, teacherId: o.lecturerId })), rooms, undefined, existing);
+      const semNumber = Number(sem.label.split('S').pop());
+      const finalYear = isFinalYearSemester(semNumber);
+      const r = generateTimetable(
+        secs.map((s) => ({ ...s, periods: periodsForSemester(semNumber), latestEnd: finalYear ? '10:00' : undefined })),
+        offs.map((o) => ({ id: o.id, code: o.code, teacherId: o.lecturerId })),
+        rooms,
+        undefined,
+        existing,
+      );
       await prisma.timetableSlot.createMany({ data: r.slots.map((s) => ({ semesterId: sem.id, sectionId: s.sectionId, moduleOfferingId: s.offeringId, teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, weekFrom: 1, weekTo: 12 })) });
       existing.push(...r.slots.map((s) => ({ teacherId: s.teacherId, venueId: s.venueId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })));
       totalSlots += r.slots.length;
@@ -525,10 +689,10 @@ async function main() {
   const dipesh = allStudents.find((s) => s.name === 'Dipesh Karki')!;
   await prisma.notification.createMany({
     data: [
-      { userId: dipesh.userId!, type: 'result.published', title: 'CS4002 result published', body: 'Your Logic and Problem Solving result is now available.', payload: { module: 'CS4002' }, createdAt: date(2026, 2, 20), readAt: date(2026, 2, 21) },
-      { userId: dipesh.userId!, type: 'result.published', title: 'CS4001 result published', body: 'Your Programming result is now available.', payload: { module: 'CS4001' }, createdAt: date(2026, 2, 20) },
-      { userId: leaderCS.id, type: 'marksheet.submitted', title: 'CS4004 marks submitted for review', body: 'Chetna Gurung submitted the CS4004 mark sheet (v1).', payload: { module: 'CS4004' }, createdAt: date(2026, 9, 11, 16) },
-      { userId: admin.id, type: 'marksheet.approved', title: 'BM4004 approved — ready to publish', body: 'Sarita Joshi approved the BM4004 mark sheet.', payload: { module: 'BM4004' }, createdAt: date(2026, 9, 11, 17) },
+      { userId: dipesh.userId!, type: 'result.published', title: 'MA4001 result published', body: 'Your Logic and Problem Solving result is now available.', payload: { module: 'MA4001' }, createdAt: date(2026, 2, 20), readAt: date(2026, 2, 21) },
+      { userId: dipesh.userId!, type: 'result.published', title: 'CC4051 result published', body: 'Your Fundamentals of Computing result is now available.', payload: { module: 'CC4051' }, createdAt: date(2026, 2, 20) },
+      { userId: leaderCS.id, type: 'marksheet.submitted', title: 'CS4001 marks submitted for review', body: 'Chetna Gurung submitted the CS4001 Programming mark sheet (v1).', payload: { module: 'CS4001' }, createdAt: date(2026, 9, 11, 16) },
+      { userId: admin.id, type: 'marksheet.approved', title: 'FE4055 approved - ready to publish', body: 'Sarita Joshi approved the FE4055 mark sheet.', payload: { module: 'FE4055' }, createdAt: date(2026, 9, 11, 17) },
     ],
   });
 

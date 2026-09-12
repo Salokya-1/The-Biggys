@@ -22,7 +22,30 @@ const venueBody = z.object({
   cols: z.number().int().min(1).max(60),
   disabledSeats: z.array(seatSchema).max(500).default([]),
   adjacencyMode: z.enum(['ROW', 'ROW_AND_COLUMN']).default('ROW'),
+  isClassroom: z.boolean().optional(),
+  /** Drawn layout from the room designer: cell kind per "row:col" plus how seats are labelled. */
+  layout: z
+    .object({
+      cells: z.record(z.string(), z.enum(['DESK', 'AISLE', 'OFF', 'TEACHER'])).optional(),
+      labelMode: z.enum(['ROW_LETTER', 'NUMERIC']).optional(),
+      note: z.string().max(200).optional(),
+    })
+    .nullable()
+    .optional(),
 });
+
+/** A drawn layout is the source of truth for which cells are seats; keep disabledSeats in step with it. */
+function disabledFromLayout(layout: { cells?: Record<string, string> } | null | undefined, rows: number, cols: number) {
+  if (!layout?.cells) return null;
+  const off: { row: number; col: number }[] = [];
+  for (let r = 1; r <= rows; r++) {
+    for (let c = 1; c <= cols; c++) {
+      const kind = layout.cells[`${r}:${c}`];
+      if (kind && kind !== 'DESK') off.push({ row: r, col: c });
+    }
+  }
+  return off;
+}
 const sessionBody = z.object({
   title: z.string().trim().min(3).max(160),
   kind: z.enum(['FINAL', 'CLASS_TEST', 'RESIT']).default('FINAL'),
@@ -121,15 +144,22 @@ export async function examRoutes(app: FastifyInstance) {
     const venues = await prisma.venue.findMany({ orderBy: { name: 'asc' }, include: { _count: { select: { examSessions: true } } } });
     return venues.map((v) => ({ ...v, capacity: capacityOf(toSeatVenue(v)) }));
   });
-  app.post('/venues', { preHandler: [allow('seating.generate')] }, async (req, reply) => {
+  app.post('/venues', { preHandler: [allow('venue.write')] }, async (req, reply) => {
     const body = parse(venueBody, req.body);
     if (body.disabledSeats.some((s) => s.row > body.rows || s.col > body.cols)) throw badRequest('A disabled seat is outside the grid');
-    const v = await prisma.venue.create({ data: { ...body, disabledSeats: body.disabledSeats as Prisma.InputJsonValue } });
+    const drawn = disabledFromLayout(body.layout, body.rows, body.cols);
+    const v = await prisma.venue.create({
+      data: {
+        ...body,
+        disabledSeats: (drawn ?? body.disabledSeats) as Prisma.InputJsonValue,
+        layout: (body.layout ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      },
+    });
     await audit(prisma, { ...actorOf(req), action: 'venue.create', entityType: 'Venue', entityId: v.id, after: v });
     reply.code(201);
     return v;
   });
-  app.patch('/venues/:id', { preHandler: [allow('seating.generate')] }, async (req) => {
+  app.patch('/venues/:id', { preHandler: [allow('venue.write')] }, async (req) => {
     const { id } = parse(idParam, req.params);
     const body = parse(venueBody.partial(), req.body);
     const before = await prisma.venue.findUnique({ where: { id } });
@@ -137,7 +167,15 @@ export async function examRoutes(app: FastifyInstance) {
     const rows = body.rows ?? before.rows;
     const cols = body.cols ?? before.cols;
     if ((body.disabledSeats ?? []).some((s) => s.row > rows || s.col > cols)) throw badRequest('A disabled seat is outside the grid');
-    const after = await prisma.venue.update({ where: { id }, data: { ...body, disabledSeats: body.disabledSeats as Prisma.InputJsonValue | undefined } });
+    const drawn = body.layout === undefined ? null : disabledFromLayout(body.layout, rows, cols);
+    const after = await prisma.venue.update({
+      where: { id },
+      data: {
+        ...body,
+        disabledSeats: (drawn ?? body.disabledSeats) as Prisma.InputJsonValue | undefined,
+        layout: body.layout === undefined ? undefined : ((body.layout ?? Prisma.JsonNull) as Prisma.InputJsonValue),
+      },
+    });
     await audit(prisma, { ...actorOf(req), action: 'venue.update', entityType: 'Venue', entityId: id, before, after });
     return after;
   });
@@ -154,7 +192,7 @@ export async function examRoutes(app: FastifyInstance) {
   });
 
   // Admin creates any session; a lecturer / module leader may create a CLASS_TEST for offerings they teach or lead.
-  app.post('/exams', { preHandler: [requireRole(...STAFF)] }, async (req, reply) => {
+  app.post('/exams', { preHandler: [allow('exam.create')] }, async (req, reply) => {
     const body = parse(sessionBody, req.body);
     const u = req.user!;
     if (u.role !== 'ADMIN') {
@@ -184,7 +222,7 @@ export async function examRoutes(app: FastifyInstance) {
     return s;
   });
 
-  app.patch('/exams/:id', { preHandler: [requireRole(...STAFF)] }, async (req) => {
+  app.patch('/exams/:id', { preHandler: [allow('exam.create')] }, async (req) => {
     const { id } = parse(idParam, req.params);
     const body = parse(sessionBody.partial(), req.body);
     const before = await prisma.examSession.findUnique({ where: { id }, include: sessionInclude });
@@ -214,7 +252,7 @@ export async function examRoutes(app: FastifyInstance) {
     return after;
   });
 
-  app.delete('/exams/:id', { preHandler: [allow('seating.generate')] }, async (req) => {
+  app.delete('/exams/:id', { preHandler: [allow('exam.schedule')] }, async (req) => {
     const { id } = parse(idParam, req.params);
     const before = await prisma.examSession.findUnique({ where: { id }, select: { title: true } });
     if (!before) throw notFound('Exam session not found');
@@ -224,7 +262,7 @@ export async function examRoutes(app: FastifyInstance) {
   });
 
   // ---------- whole-semester exam schedule (also runs automatically 3 weeks before the exam window) ----------
-  app.post('/exams/schedule/generate', { preHandler: [allow('seating.generate')] }, async (req) => {
+  app.post('/exams/schedule/generate', { preHandler: [allow('exam.schedule')] }, async (req) => {
     const { semesterId, durationMin, replace } = parse(z.object({ semesterId: z.string(), durationMin: z.number().int().min(30).max(240).optional(), replace: z.boolean().default(false) }), req.body);
     const r = await scheduleSemesterExams(semesterId, { actorId: req.user!.id, generatedBy: 'manual', durationMin, replace });
     if (r.skipped) throw conflict(`This semester already has ${r.existing} final exam session(s). Pass replace: true to regenerate.`);

@@ -4,6 +4,7 @@ import { config } from '../config';
 import { parse } from '../lib/validation';
 import { badRequest, HttpError } from '../lib/errors';
 import { audit, actorOf } from '../lib/audit';
+import { allow } from '../plugins/auth';
 import { prisma } from '../lib/prisma';
 
 /**
@@ -73,6 +74,16 @@ const TOOLS: ToolDef[] = [
   { name: 'my_exam_seats', description: 'The signed-in student\'s upcoming exams and seats.', parameters: obj({}), call: () => ({ method: 'GET', url: '/api/exams/me' }) },
   { name: 'my_timetable', description: 'This week\'s classes and exams for the signed-in user (student section or teacher).', parameters: obj({}), call: () => ({ method: 'GET', url: '/api/timetable/me' }) },
   { name: 'notifications', description: 'The signed-in user\'s notifications.', parameters: obj({}), call: () => ({ method: 'GET', url: '/api/notifications' }) },
+  { name: 'class_list', description: 'Class list for a module offering: every enrolled student grouped by section, with attempt, resit flag and latest result.', parameters: obj({ offeringId: str }, ['offeringId']), call: (a) => ({ method: 'GET', url: `/api/offerings/${a.offeringId}/class-list` }) },
+  { name: 'list_users', description: 'User accounts (staff and students) with their role and effective permissions. Filters q, role, isActive.', parameters: obj({ q: str, role: { type: 'string', enum: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] }, isActive: { type: 'boolean' }, page: num, pageSize: num }), call: (a) => ({ method: 'GET', url: `/api/admin/users${qs(a)}` }) },
+  { name: 'create_user', description: 'Create an account (admin): role ADMIN | MODULE_LEADER | LECTURER | STUDENT. For a student also pass student:{studentId, programmeId, intakeId, sectionId?}. Returns a temporary password when none is given.', parameters: obj({ email: str, name: str, role: { type: 'string', enum: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] }, password: str, student: { type: 'object', additionalProperties: true } }, ['email', 'name', 'role']), call: (a) => ({ method: 'POST', url: '/api/admin/users', body: a }) },
+  { name: 'update_user', description: 'Change a user (admin): name, email, role, isActive, password.', parameters: obj({ id: str, fields: { type: 'object', additionalProperties: true } }, ['id', 'fields']), call: (a) => ({ method: 'PATCH', url: `/api/admin/users/${a.id}`, body: a.fields }) },
+  { name: 'set_permission', description: 'Turn one capability on or off for one user (admin), e.g. action "marksheet.publish". Use list_capabilities for the keys.', parameters: obj({ id: str, action: str, allowed: { type: 'boolean' } }, ['id', 'action', 'allowed']), call: (a) => ({ method: 'POST', url: `/api/admin/users/${a.id}/permissions`, body: { action: a.action, allowed: a.allowed } }) },
+  { name: 'list_capabilities', description: 'Every capability key in the system with its label, group and default roles.', parameters: obj({}), call: () => ({ method: 'GET', url: '/api/admin/actions' }) },
+  { name: 'timetable_alternatives', description: 'Free periods a class could be moved to, respecting teacher, room, final-year cut-off and the two-hour gap rule.', parameters: obj({ slotId: str }, ['slotId']), call: (a) => ({ method: 'GET', url: `/api/timetable/slots/${a.slotId}/alternatives` }) },
+  { name: 'timetable_health', description: 'Constraint report for a semester: gaps over two hours, final-year classes after 10:00, clashes.', parameters: obj({ semesterId: str }, ['semesterId']), call: (a) => ({ method: 'GET', url: `/api/timetable/health${qs(a)}` }) },
+  { name: 'save_room_layout', description: 'Save a drawn room layout (admin): cells maps "row:col" to DESK | AISLE | OFF | TEACHER; non-desk cells stop being seats.', parameters: obj({ venueId: str, rows: num, cols: num, layout: { type: 'object', additionalProperties: true } }, ['venueId']), call: (a) => ({ method: 'PATCH', url: `/api/venues/${a.venueId}`, body: { rows: a.rows, cols: a.cols, layout: a.layout } }) },
+  { name: 'check_reason', description: 'Run the reason-quality check on a piece of text before submitting a request.', parameters: obj({ reason: str }, ['reason']), call: (a) => ({ method: 'POST', url: '/api/requests/check-reason', body: { reason: a.reason } }) },
   { name: 'api_request', description: 'Escape hatch: call any API route directly (path must start with /api/). Use only when no specific tool fits. See the route list in the system prompt.', parameters: obj({ method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }, path: str, body: { type: 'object', additionalProperties: true } }, ['method', 'path']), call: (a) => ({ method: a.method as 'GET', url: String(a.path), body: a.body }) },
 ];
 
@@ -82,7 +93,7 @@ function systemPrompt(req: FastifyRequest) {
   const u = req.user!;
   return `You are the RTE assistant inside Islington College's RTE Integrated Management System (results, exams, seating, timetables, fees). Today is ${new Date().toISOString().slice(0, 10)}.
 You are talking to ${u.name} (role ${u.role}${u.studentId ? ', a student' : ''}). You act ONLY through the provided tools, which run with this user's own permissions; if a tool returns 403 the user is not allowed to do that — say so plainly.
-Rules: (1) Look ids up with list/search tools before acting; never invent ids. (2) For irreversible or high-impact actions — deleting a student, publishing results, regenerating a timetable/exam schedule/seating that replaces existing data, approving requests, recording payments — state exactly what you are about to do and ask for confirmation, unless the user's message already explicitly requested that exact action. (3) After acting, report what changed in plain English, including any clashes, unseated students or validation errors returned. (4) Keep answers short; use bullet points for lists; never paste raw JSON and never show internal record ids (cuids) — refer to students by ID number and name, modules by code, sessions by title. (5) Grading, standing and calendar rules are configurable assumptions — say so if asked. ${ROUTE_CHEATSHEET}`;
+Rules: (1) Look ids up with list/search tools before acting; never invent ids. (2) For irreversible or high-impact actions — deleting a student, publishing results, regenerating a timetable/exam schedule/seating that replaces existing data, approving requests, recording payments — state exactly what you are about to do and ask for confirmation, unless the user's message already explicitly requested that exact action. (3) After acting, report what changed in plain English, including any clashes, unseated students or validation errors returned. (4) Keep answers short; use bullet points for lists; never paste raw JSON and never show internal record ids (cuids) — refer to students by ID number and name, modules by code, sessions by title. (5) The academic calendar is 12 teaching weeks then a 2-week exam window; final-year groups finish by 10:00 and no group may have a gap over two hours, so moves that break those rules are refused with alternatives you should offer. (6) Grading, standing and calendar rules are configurable assumptions — say so if asked. ${ROUTE_CHEATSHEET}`;
 }
 
 interface Msg {
@@ -179,7 +190,7 @@ function shape(tool: string, json: unknown): unknown {
 export async function assistantRoutes(app: FastifyInstance) {
   app.get('/assistant/status', async () => ({ enabled: !!config.OPENROUTER_API_KEY, model: config.OPENROUTER_MODEL, tools: TOOLS.map((t) => t.name) }));
 
-  app.post('/assistant/chat', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+  app.post('/assistant/chat', { preHandler: [allow('assistant.use')], config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
     if (!config.OPENROUTER_API_KEY) throw badRequest('The assistant is not configured (OPENROUTER_API_KEY is empty)');
     const { messages } = parse(z.object({ messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(8000) })).min(1).max(40) }), req.body);
     const authorization = req.headers.authorization ?? '';

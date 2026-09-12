@@ -7,6 +7,7 @@ import { locked, unauthorized } from '../lib/errors';
 import { audit } from '../lib/audit';
 import { hashToken, newRefreshToken, signAccessToken, ACCESS_TTL_SEC, type AuthUser } from '../lib/jwt';
 import { authenticate } from '../plugins/auth';
+import { effectiveActions, parseOverrides } from '../lib/actions';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -20,10 +21,16 @@ async function toAuthUser(userId: string): Promise<AuthUser | null> {
   return { id: u.id, email: u.email, name: u.name, role: u.role, studentId: u.student?.id ?? null };
 }
 
+/** The capabilities this account actually holds, so the web app hides what it cannot do. */
+async function actionsFor(userId: string): Promise<string[]> {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, permissions: true } });
+  return u ? effectiveActions(u.role, parseOverrides(u.permissions)) : [];
+}
+
 async function issueTokens(user: AuthUser) {
   const rt = newRefreshToken();
   await prisma.refreshToken.create({ data: { userId: user.id, tokenHash: rt.tokenHash, expiresAt: rt.expiresAt } });
-  return { accessToken: signAccessToken(user), refreshToken: rt.token, expiresIn: ACCESS_TTL_SEC, user };
+  return { accessToken: signAccessToken(user), refreshToken: rt.token, expiresIn: ACCESS_TTL_SEC, user: { ...user, actions: await actionsFor(user.id) } };
 }
 
 export async function authRoutes(app: FastifyInstance) {
@@ -88,6 +95,6 @@ export async function authRoutes(app: FastifyInstance) {
   app.get('/me', { preHandler: [authenticate] }, async (req) => {
     const user = await toAuthUser(req.user!.id);
     if (!user) throw unauthorized('Account inactive');
-    return user;
+    return { ...user, actions: await actionsFor(user.id) };
   });
 }
