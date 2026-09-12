@@ -1,0 +1,23 @@
+# Local development / demo-fallback database.
+# Usage: docker compose up -d   (then see backend/.env.example for DATABASE_URL)
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: the-biggys-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: biggys
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d biggys"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
