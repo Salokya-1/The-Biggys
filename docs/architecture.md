@@ -254,3 +254,38 @@ system explains its judgement rather than silently dropping a request.
 A venue's `layout` is a sparse map of `"row:col" → DESK | AISLE | OFF | TEACHER`. `disabledFromLayout()` derives
 `disabledSeats` from it on every write, which means the existing seating engine needed no change: it already respected
 disabled seats. Drawing a room is therefore a UI over data the engine already understood.
+
+## v4 — the allocation model
+
+The timetable stopped being an abstract grid of equal periods and became the thing RTE actually
+runs. Reading Islington's live Autumn 2025 allocation sheet settled four questions the earlier
+model had guessed at:
+
+- **A class is not one length.** A lecture is 90 minutes, a tutorial 60, a workshop 120. Classes
+  start on the half hour from 06:30, which is what lets one campus push three years of six
+  programmes through the same rooms.
+- **A lecture is for the cohort, not the group.** The sheet writes `C1+C2+…+C8` against a hall.
+  `TimetableSlot` therefore has a many-to-many `groups` alongside its primary `section`: the
+  whole cohort for a lecture, the one group for an applied hour. Clash detection checks every
+  group in the room, so a lecture blocks all eight.
+- **Rooms have a purpose.** `Venue.roomType` is one of HALL, LECTURE_THEATRE, TUTORIAL_ROOM,
+  SEMINAR_ROOM or LAB, and `SESSION[kind].rooms` lists which will do, best first. A workshop
+  wants a lab and will take a tutorial room; a lecture will not take either.
+- **Groups are named, not lettered.** `C1…C8` for Computing, `N`, `AI`, `M`, `B`, `AF` for the
+  others — the names that appear on the sheet, on a class list and on a door.
+
+Generation is therefore: for each offering, book one cohort lecture, then one applied hour per
+group, each into a room of the right kind, respecting the year's day pattern, the final-year
+finish time and the two-hour gap rule. What cannot be placed is reported with the reason.
+
+The export is the same fourteen columns the department already works in, plus a sheet per
+course-year and a workload sheet totalling each lecturer's contact hours. That is deliberate: the
+fastest way to have a generated timetable trusted is to hand it back in the format its readers
+already check.
+
+### Mail
+
+`sendEmail` writes to the `EmailMessage` outbox first and only then attempts delivery. The record
+of what the system told whom survives a mail outage, a missing password and a demo laptop with no
+network. Without `SMTP_URL` the row stays QUEUED and the body is logged, so no feature depends on
+a mail server existing and nothing disappears silently.

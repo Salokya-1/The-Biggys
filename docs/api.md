@@ -205,3 +205,43 @@ POST /api/requests/check-reason   {"text":"…"} → {verdict, score, notes[], c
 
 `verdict` is `OK`, `WEAK` or `GIBBERISH`. Creating a request with a `GIBBERISH` reason is refused with **400** and the
 full report in `details.reasonCheck`; `WEAK` is accepted but stored and shown to whoever decides the request.
+
+## Resource allocation
+
+The department keeps its timetable as one row per session. These endpoints produce exactly that,
+so a generated routine can be checked against — or dropped into — the sheet already in use.
+
+```
+GET /api/timetable/allocation?semesterId        JSON rows + per-lecturer workload + totals
+GET /api/timetable/allocation.xlsx?semesterId   Module view, a sheet per course-year, Teacher Workload
+GET /api/timetable/allocation.csv?semesterId    the same rows, for pasting into the live sheet
+```
+
+Columns, in order: `Day · Time Start · Time End · Hours · Class Type · Year · Course ·
+Specialization · Module Code · Module Title · Lecturer · Group · Block · Room`. Times are written
+the sheet's way (`630`, `1330`), module codes carry the `NI` suffix, and a lecture lists every
+group in the room (`C1+C2+C3+C4+C5+C6+C7+C8`).
+
+`GET /api/timetable/periods?semesterId` returns the half-hour ladder a class can start on, the
+day's end time, and the length and permitted room types of each class kind.
+
+## Module overview and report
+
+```
+GET /api/offerings/:id/overview      cohort, pass rate, bands, grades, sections, components, classes
+GET /api/offerings/:id/report.xlsx   Summary · Students (every mark) · Distribution · Classes
+```
+
+## Camera access (admin only)
+
+```
+GET  /api/camera-requests                 requests + the IT support address + whether SMTP is set
+POST /api/camera-requests                 {examSessionId | slotId+date | venueId+date+times, reason}
+POST /api/camera-requests/:id/decide      {decision: APPROVED | DENIED, note?}
+GET  /api/emails                          the outbox: what was sent, to whom, and whether it left
+```
+
+Naming an exam takes the room and the window from that exam, so access can never be asked for
+longer than the sitting. A second live request for the same room and overlapping window is
+refused with **409**. Creating one emails IT support and writes an audit row; without `SMTP_URL`
+the message is stored and marked queued rather than silently dropped.

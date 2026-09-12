@@ -54,3 +54,19 @@ Fill the placeholders when the services are created (never paste secrets here).
    Use the **External** connection string from the `biggys-db` page; the internal one only resolves inside Render.
 
 Notes for the free tier: services sleep after 15 minutes idle and take roughly 50 seconds to wake, so keep the cron-job.org ping on `/health/ready` pointed at the Render URL as well. The free Postgres expires after 30 days — export with `pg_dump` before then if the project keeps running. Migrations run in `startCommand`, so a schema change ships with the deploy; a failed migration stops the release and Render keeps the previous version serving.
+
+## Deployment gotchas worth knowing
+
+Two things cost us a deploy each; both are in `render.yaml` now.
+
+- **Database region.** A blueprint `databases:` entry with no `region` is created in Oregon while
+  the services take whatever region they name. `fromDatabase` only resolves inside one region, so
+  an API in Singapore pointing at an Oregon database is not created at all — the sync reports a
+  failure against a service that never appears in the list. Pin the database region to the API's.
+- **devDependencies.** `NODE_ENV=production` makes `npm ci` skip devDependencies, and both the
+  TypeScript compiler and the Prisma CLI live there. Without `npm ci --include=dev` the build
+  exits with status 2 before compiling anything.
+
+**Mail:** set `SMTP_URL` (any SMTP connection string) and optionally `SMTP_FROM` to deliver
+camera-access requests; `IT_SUPPORT_EMAIL` sets where they go. With no `SMTP_URL` the message is
+written to the outbox and marked queued — visible under `GET /api/emails` — rather than lost.

@@ -42,6 +42,15 @@ Have `docs/sample-marks-CS4003.csv` ready. Phone signed in as `student1@demo` on
 | admin@demo | Users → lecturer@demo → tick *Publish results* | "Roles are the starting point, not the ceiling. 27 capabilities, each switchable per person. Watch — the lecturer's Publish button appears within ten seconds. Untick it and it's gone. The server decides, not the menu." |
 | student1@demo | My results → admit card panel at the top | "The student's own page leads with the admit card: paid, issued, every exam with venue and seat." |
 
+## Extended demo (v4, +2 minutes)
+
+| Who | Do | Say |
+|---|---|---|
+| admin@demo | Timetable → point at a lecture chip, then a workshop chip | "This is how Islington actually runs. The lecture is ninety minutes for the whole cohort — C1 plus C2 all the way to C8 — in Kumari Hall. The workshop is two hours for one group in a lab. The tutorial is an hour in a seminar room. Different lengths, different rooms, because that is what the timetable is." |
+| admin@demo | Timetable → **Resource allocation** → open the workbook | "Fourteen columns: day, time, hours, class type, year, course, specialisation, module, lecturer, group, block, room. That is their sheet. A sheet per year, and the teacher workload totalled. We did not invent a format for them to learn." |
+| admin@demo | Modules → any module → **Overview** | "Pass rate, the marks distribution in ten-point bands, section averages, component averages, and the classes that run each week. The Excel report is the same thing with every student's marks." |
+| admin@demo | Camera access → New request → pick the exam | "Invigilation is short in that hall. I ask IT support for a camera, for the length of that sitting only — the window comes from the exam, not from me. It emails them, it is on the record, and the system never switches anything on itself." |
+
 ## Judge Q&A — answer by showing
 
 1. **Can a lecturer change a published mark?** No. Open the published sheet: grid read-only, no submit action. Then `curl -X PUT …/marks` → 409 "Marks can only be edited while the sheet is DRAFT". Even a raw `UPDATE "Mark"` fails: trigger `mark_published_immutable`. Corrections = *Request correction* (reason) → new version → students notified "result updated".
