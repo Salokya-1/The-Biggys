@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
+import '../widgets/common.dart';
 
 const _roleLabel = {
   'ADMIN': 'RTE Admin',
@@ -64,7 +65,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   Widget build(BuildContext context) {
     final threads = ref.watch(threadsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Messages')),
+      appBar: AppBar(title: const Text('Messages'), actions: const [AppBarLogo()]),
       body: Column(
         children: [
           Padding(

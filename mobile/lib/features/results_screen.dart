@@ -11,7 +11,7 @@ class ResultsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final q = ref.watch(profileProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('My results')),
+      appBar: AppBar(title: const Text('My results'), actions: const [AppBarLogo()]),
       body: q.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ErrorState(message: e.toString(), onRetry: () => ref.invalidate(profileProvider)),

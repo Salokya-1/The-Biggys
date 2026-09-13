@@ -7,6 +7,7 @@ import '../core/auth.dart';
 import '../core/config.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
+import '../widgets/common.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -18,7 +19,7 @@ class ProfileScreen extends ConsumerWidget {
     final profile = user.isStudent ? ref.watch(profileProvider) : null;
     final s = profile?.value == null ? null : (profile!.value!.data as Map)['student'] as Map<String, dynamic>;
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(title: const Text('Profile'), actions: const [AppBarLogo()]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Card(
           child: ListTile(

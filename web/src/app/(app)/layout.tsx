@@ -93,9 +93,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <aside data-app-rail className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
         <div className="border-b border-sidebar-border px-5 py-5">
           <Link href="/" className="flex items-center gap-3">
-            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={210} height={49} priority className="h-12 w-auto shrink-0" />
+            <Image src="/brand/kramiq.png" alt="KramIQ by The Biggys" width={823} height={787} priority className="h-12 w-auto shrink-0" />
             <span className="h-9 w-px shrink-0 bg-sidebar-border" />
-            <Image src="/brand/kramiq-square.png" alt="KramIQ by The Biggys" width={96} height={96} priority className="h-11 w-11 shrink-0" />
+            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={210} height={49} priority className="h-12 w-auto shrink-0" />
           </Link>
           <p className="mt-3 text-[11px] font-medium uppercase tracking-widest text-sidebar-foreground/70">KramIQ · RTE Management System</p>
         </div>
@@ -140,8 +140,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header data-app-header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 bg-sidebar px-4 py-2 text-sidebar-foreground md:hidden">
           <span className="flex items-center gap-2">
+            <Image src="/brand/kramiq.png" alt="KramIQ" width={823} height={787} className="h-9 w-auto shrink-0" />
             <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={160} height={37} className="h-9 w-auto" />
-            <Image src="/brand/kramiq-square.png" alt="KramIQ" width={72} height={72} className="h-8 w-8" />
           </span>
           {/* One scrollable row rather than a wrapping block: on a narrow screen the wrapped list
               pushed the page content most of the way down the viewport. */}

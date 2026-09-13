@@ -53,7 +53,7 @@ class _SheetScreenState extends ConsumerState<SheetScreen> {
   Widget build(BuildContext context) {
     final q = ref.watch(sheetDetailProvider(widget.id));
     return Scaffold(
-      appBar: AppBar(title: const Text('Mark sheet')),
+      appBar: AppBar(title: const Text('Mark sheet'), actions: const [AppBarLogo()]),
       body: q.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ErrorState(message: e.toString(), onRetry: () => ref.invalidate(sheetDetailProvider(widget.id))),

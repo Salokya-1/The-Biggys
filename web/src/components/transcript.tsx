@@ -34,9 +34,9 @@ export function Transcript({ profile }: { profile: StudentProfile }) {
       <div className="print-only text-black">
         <header className="mb-6 flex items-start justify-between gap-6 border-b-2 border-black pb-4">
           <div className="flex items-center gap-4">
-            <Image src="/brand/islington-logo.svg" alt="Islington College" width={220} height={52} className="h-14 w-auto" />
+            <Image src="/brand/kramiq.png" alt="KramIQ" width={823} height={787} className="h-14 w-auto" />
             <span className="h-12 w-px bg-black/25" />
-            <Image src="/brand/kramiq-square.png" alt="KramIQ" width={96} height={96} className="h-12 w-12" />
+            <Image src="/brand/islington-logo.svg" alt="Islington College" width={220} height={52} className="h-14 w-auto" />
           </div>
           <div className="text-right text-[11px] leading-relaxed">
             <p className="text-base font-semibold">Statement of Results</p>

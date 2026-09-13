@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../core/api.dart';
 import '../core/auth.dart';
 import '../core/config.dart';
+import '../widgets/common.dart';
 
 /// Lets the demo point at the deployed API or a laptop on the venue Wi-Fi.
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -34,7 +35,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('Settings'), actions: const [AppBarLogo()]),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         const Text('API base URL', style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),

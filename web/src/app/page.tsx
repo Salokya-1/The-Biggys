@@ -25,9 +25,9 @@ export default function Home() {
       <header className="bg-sidebar text-sidebar-foreground">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <span className="flex min-w-0 items-center gap-3">
-            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto shrink-0" />
+            <Image src="/brand/kramiq.png" alt="KramIQ by The Biggys" width={823} height={787} priority className="h-10 w-auto shrink-0" />
             <span className="h-8 w-px shrink-0 bg-sidebar-border" />
-            <Image src="/brand/kramiq-square.png" alt="KramIQ by The Biggys" width={80} height={80} priority className="h-10 w-10 shrink-0" />
+            <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto shrink-0" />
           </span>
           <div className="flex items-center gap-2">
             <ThemeToggle inverse />

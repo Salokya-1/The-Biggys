@@ -165,3 +165,22 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _GridPainter old) => old.row != row || old.col != col || old.rows != rows || old.cols != cols;
 }
+
+/// The KramIQ mark, parked at the end of an app bar.
+///
+/// Every screen's bar had a title on the left and nothing at all on the right. The mark sits there
+/// rather than a wordmark because a bar is short and a title can be long; it is decoration, so it
+/// is hidden from screen readers instead of being read out on every screen.
+class AppBarLogo extends StatelessWidget {
+  const AppBarLogo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 12, left: 4),
+      child: ExcludeSemantics(
+        child: Image.asset('assets/brand/kramiq.png', height: 30, filterQuality: FilterQuality.medium),
+      ),
+    );
+  }
+}

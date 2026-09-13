@@ -11,7 +11,7 @@ class ExamsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final q = ref.watch(examsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('My exam seats')),
+      appBar: AppBar(title: const Text('My exam seats'), actions: const [AppBarLogo()]),
       body: q.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ErrorState(message: e.toString(), onRetry: () => ref.invalidate(examsProvider)),

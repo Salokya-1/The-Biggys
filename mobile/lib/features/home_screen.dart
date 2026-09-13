@@ -14,7 +14,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user!;
     return Scaffold(
-      appBar: AppBar(title: Text('Hi, ${user.name.split(' ').first}'), actions: const [ThemeToggleButton()]),
+      appBar: AppBar(title: Text('Hi, ${user.name.split(' ').first}'), actions: const [ThemeToggleButton(), AppBarLogo()]),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(profileProvider);

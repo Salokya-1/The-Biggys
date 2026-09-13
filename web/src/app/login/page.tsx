@@ -55,10 +55,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-4">
         <div className="flex items-center justify-between gap-3">
           <span className="flex min-w-0 items-center gap-3">
+            <Image src="/brand/kramiq.png" alt="KramIQ by The Biggys" width={823} height={787} priority className="h-10 w-auto shrink-0" />
+            <span className="h-8 w-px shrink-0 bg-border" />
             <Image src="/brand/islington-logo.svg" alt="Islington College" width={170} height={40} priority className="h-10 w-auto dark:hidden" />
             <Image src="/brand/islington-logo-white.svg" alt="Islington College" width={170} height={40} priority className="hidden h-10 w-auto dark:block" />
-            <span className="h-8 w-px shrink-0 bg-border" />
-            <Image src="/brand/kramiq-square.png" alt="KramIQ by The Biggys" width={80} height={80} priority className="h-10 w-10 shrink-0" />
           </span>
           <ThemeToggle />
         </div>

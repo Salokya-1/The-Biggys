@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
 import '../core/auth.dart';
+import '../widgets/common.dart';
 
 const _days = [
   (value: 7, label: 'Sunday'),
@@ -27,7 +28,7 @@ class AvailabilityScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final q = ref.watch(myUnavailabilityProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('My availability')),
+      appBar: AppBar(title: const Text('My availability'), actions: const [AppBarLogo()]),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _add(context, ref),
         icon: const Icon(Icons.event_busy_outlined),
