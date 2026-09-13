@@ -83,7 +83,7 @@ Mobile: `cd mobile && flutter pub get && flutter run` (emulator reaches the API 
 | Web | **https://kramiq.tech** (also https://biggys-web.onrender.com) |
 | API | https://biggys-api.onrender.com (`/health/ready`, `/health/version`) |
 | APK | GitHub Release `v1.0.0-hackathon` — installs on any phone and talks to the deployed API out of the box |
-| Status page | `{{STATUS_PAGE_URL}}` |
+| Status page | https://kramiq.tech/status — public, no login |
 
 Both run on Render's free tier from `render.yaml`, so the first request after a quiet spell takes
 about 50 seconds while the instance wakes. The demo data loads itself the first time the database
