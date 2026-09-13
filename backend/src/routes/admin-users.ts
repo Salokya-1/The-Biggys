@@ -90,10 +90,11 @@ export async function adminUserRoutes(app: FastifyInstance) {
   app.post('/admin/scenario', { preHandler: [allow('users.manage')] }, async (req) => {
     const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
     if (confirm !== 'BUILD THE SCENARIO') throw badRequest('Send {"confirm":"BUILD THE SCENARIO"} to run it.');
-    const { runScenario } = await import('../services/scenario');
+    const { runScenario, seedAttendanceHistory } = await import('../services/scenario');
     const report = await runScenario(prisma);
+    const attendance = await seedAttendanceHistory(prisma);
     await audit(prisma, { ...actorOf(req), action: 'admin.scenario', entityType: 'Programme', entityId: 'BSCNIS', after: { student: report.student.studentId, classes: report.classes.length } });
-    return report;
+    return { ...report, attendanceHistory: attendance };
   });
 
   app.post('/admin/reseed', { preHandler: [allow('users.manage')] }, async (req) => {

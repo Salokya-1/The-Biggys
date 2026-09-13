@@ -424,3 +424,109 @@ export async function runScenario(prisma: PrismaClient): Promise<ScenarioReport>
     warnings,
   };
 }
+
+/**
+ * Registers for the term that has actually run.
+ *
+ * Attendance only means something once enough of a term has passed — a fortnight of absence is a
+ * cold, a whole term of it is a problem — and in this calendar every cohort's current semester
+ * begins today, so the only term with anything to judge is the one before it. These are last
+ * term's registers: real dates, one class a week per module, with a deliberate minority who fell
+ * well below half and would have been picked up by the at-risk list at the time.
+ *
+ * One group per cohort rather than all eight. The point is that every course and every module has
+ * attendance to look at, not that a free database holds two hundred thousand rows of it.
+ */
+export async function seedAttendanceHistory(prisma: PrismaClient) {
+  const WEEKS = 8;
+  /** Roughly one in five, chosen by position so a re-run picks the same people. */
+  const isStruggling = (i: number) => i % 5 === 2;
+
+  const intakes = await prisma.intake.findMany({
+    include: {
+      programme: { select: { code: true } },
+      semesters: { orderBy: { number: 'asc' } },
+      sections: { orderBy: { name: 'asc' } },
+    },
+  });
+  const anyTeacher = await prisma.user.findFirst({ where: { role: 'LECTURER', isActive: true }, select: { id: true } });
+
+  const covered: string[] = [];
+  const skipped: string[] = [];
+  let records = 0;
+
+  for (const intake of intakes) {
+    // The current semester started today; the one before it is the only term with a story.
+    if (intake.semesters.length < 2) {
+      skipped.push(`${intake.programme.code} ${intake.label} — no term before the one starting today`);
+      continue;
+    }
+    const term = intake.semesters[intake.semesters.length - 2];
+    const section = intake.sections[0];
+    if (!section) continue;
+
+    const offerings = await prisma.moduleOffering.findMany({
+      where: { semesterId: term.id },
+      select: { id: true, lecturerId: true, module: { select: { code: true } } },
+      orderBy: { module: { code: 'asc' } },
+    });
+    if (offerings.length === 0) continue;
+
+    const students = await prisma.student.findMany({
+      where: { sectionId: section.id, deletedAt: null },
+      select: { id: true },
+      orderBy: { studentId: 'asc' },
+    });
+    if (students.length === 0) continue;
+
+    for (const [oi, offering] of offerings.entries()) {
+      const teacherId = offering.lecturerId ?? anyTeacher?.id;
+      if (!teacherId) continue;
+
+      // One weekly class per module. Past terms were never given a routine, so it is written here
+      // rather than invented per register — attendance has to point at a real class.
+      let slot = await prisma.timetableSlot.findFirst({
+        where: { semesterId: term.id, sectionId: section.id, moduleOfferingId: offering.id },
+        select: { id: true, dayOfWeek: true },
+      });
+      if (!slot) {
+        const day = [7, 1, 2, 3, 4, 5][oi % 6];
+        const hour = 9 + (oi % 4) * 2;
+        slot = await prisma.timetableSlot.create({
+          data: {
+            semesterId: term.id,
+            sectionId: section.id,
+            moduleOfferingId: offering.id,
+            teacherId,
+            kind: 'LECTURE',
+            dayOfWeek: day,
+            startTime: `${String(hour).padStart(2, '0')}:00`,
+            endTime: `${String(hour + 1).padStart(2, '0')}:30`,
+          },
+          select: { id: true, dayOfWeek: true },
+        });
+      }
+
+      const rows: { studentId: string; slotId: string; offeringId: string; date: Date; status: 'PRESENT' | 'ABSENT'; markedById: string }[] = [];
+      for (let w = 0; w < WEEKS; w += 1) {
+        const d = new Date(term.startDate.getTime() + w * 7 * 86400e3);
+        const iso = ((d.getUTCDay() + 6) % 7) + 1;
+        d.setUTCDate(d.getUTCDate() + (slot.dayOfWeek - iso));
+        d.setUTCHours(0, 0, 0, 0);
+        for (const [si, s] of students.entries()) {
+          // A struggling student turns up now and then; everybody else misses the odd week.
+          const rnd = seeded(si * 977 + w * 31 + oi * 7)();
+          const present = isStruggling(si) ? rnd < 0.3 : rnd < 0.9;
+          rows.push({ studentId: s.id, slotId: slot.id, offeringId: offering.id, date: d, status: present ? 'PRESENT' : 'ABSENT', markedById: teacherId });
+        }
+      }
+      for (let i = 0; i < rows.length; i += 500) {
+        const r = await prisma.attendanceRecord.createMany({ data: rows.slice(i, i + 500), skipDuplicates: true });
+        records += r.count;
+      }
+    }
+    covered.push(`${intake.programme.code} ${intake.label} · semester ${term.number} · group ${section.name} · ${offerings.length} modules · ${students.length} students`);
+  }
+
+  return { records, covered, skipped };
+}
