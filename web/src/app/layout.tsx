@@ -12,7 +12,7 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "KramIQ · RTE IMS · The Biggys",
+  title: "KramIQ · Developed by The Biggys",
   description: "RTE Integrated Management System — Islington Hackathon 2026",
 };
 

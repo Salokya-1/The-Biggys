@@ -17,7 +17,7 @@ class RteApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
     final mode = ref.watch(themeModeProvider);
     return MaterialApp.router(
-      title: 'RTE IMS',
+      title: 'KramIQ',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
