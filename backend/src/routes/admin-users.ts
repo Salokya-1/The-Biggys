@@ -83,6 +83,19 @@ export async function adminUserRoutes(app: FastifyInstance) {
    * whatever it was first given. This replaces it. It is destructive by design, so it is admin
    * only and the caller has to say so in as many words — there is no way to fire it by accident.
    */
+  /**
+   * Lay the published Level 6 Networking schedule over the Sep 2024 cohort and walk one student
+   * through it end to end. Additive and repeatable — it never truncates.
+   */
+  app.post('/admin/scenario', { preHandler: [allow('users.manage')] }, async (req) => {
+    const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
+    if (confirm !== 'BUILD THE SCENARIO') throw badRequest('Send {"confirm":"BUILD THE SCENARIO"} to run it.');
+    const { runScenario } = await import('../services/scenario');
+    const report = await runScenario(prisma);
+    await audit(prisma, { ...actorOf(req), action: 'admin.scenario', entityType: 'Programme', entityId: 'BSCNIS', after: { student: report.student.studentId, classes: report.classes.length } });
+    return report;
+  });
+
   app.post('/admin/reseed', { preHandler: [allow('users.manage')] }, async (req) => {
     const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
     if (confirm !== 'REPLACE ALL DEMO DATA') throw badRequest('Send confirm: "REPLACE ALL DEMO DATA" to rebuild the demo data. Everything currently in the database is deleted.');
