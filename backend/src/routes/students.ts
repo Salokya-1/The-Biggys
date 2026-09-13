@@ -14,6 +14,8 @@ const listQuery = pagination.extend({
   programmeId: z.string().optional(),
   intakeId: z.string().optional(),
   semesterNumber: z.coerce.number().int().min(1).max(12).optional(),
+  /** Year of the programme: 1 covers semesters 1-2, 2 covers 3-4, 3 covers 5-6. */
+  year: z.coerce.number().int().min(1).max(6).optional(),
   status: z.enum(['ACTIVE', 'DEFERRED', 'WITHDRAWN', 'GRADUATED']).optional(),
   standing: z.enum(['GOOD', 'RESIT', 'REVIEW']).optional(),
 });
@@ -151,7 +153,13 @@ export async function studentRoutes(app: FastifyInstance) {
       ...(q.intakeId ? { intakeId: q.intakeId } : {}),
       ...(q.status ? { status: q.status } : {}),
       ...(q.standing ? { standing: q.standing } : {}),
-      ...(q.semesterNumber ? { currentSemester: { number: q.semesterNumber } } : {}),
+      // A named semester wins over the year that contains it, so picking "Semester 4" inside
+      // "Year 2" narrows rather than contradicting.
+      ...(q.semesterNumber
+        ? { currentSemester: { number: q.semesterNumber } }
+        : q.year
+          ? { currentSemester: { number: { in: [q.year * 2 - 1, q.year * 2] } } }
+          : {}),
       ...(q.q
         ? {
             OR: [

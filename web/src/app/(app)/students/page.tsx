@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { StandingBadge, StatusBadge } from '@/components/status-badges';
 import { useAuth } from '@/lib/auth';
+import { YEARS, semestersInYear, yearLabel } from '@/lib/academic-year';
 import { NewStudent } from '@/components/new-student';
 import { api, qs } from '@/lib/api';
 import type { Paged, Programme, StudentSummary } from '@/lib/types';
@@ -26,6 +27,7 @@ export default function StudentsPage() {
   const [intakeId, setIntakeId] = useState('all');
   const [status, setStatus] = useState('all');
   const [standing, setStanding] = useState('all');
+  const [year, setYear] = useState('all');
   const [semesterNumber, setSemesterNumber] = useState('all');
   const [page, setPage] = useState(1);
   const pageSize = 20;
@@ -54,11 +56,18 @@ export default function StudentsPage() {
   // Base UI Select renders the raw value unless it is given an items map.
   const programmeItems = { all: 'All programmes', ...Object.fromEntries((programmes.data ?? []).map((p) => [p.id, `${p.code} · ${p.name}`])) };
   const intakeItems = { all: 'All intakes', ...Object.fromEntries(intakes.map((i) => [i.id, i.label])) };
-  const semesterItems = { all: 'Any semester', ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [String(n), `Semester ${n}`])) };
+  // Year first, because that is how a cohort is spoken about; the semester stays available inside
+  // it, since half a year is a real thing to ask for and the two semesters differ.
+  const yearItems = { all: 'Any year', ...Object.fromEntries(YEARS.map((y) => [String(y), yearLabel(y)])) };
+  const inYear = year === 'all' ? [1, 2, 3, 4, 5, 6] : semestersInYear(Number(year));
+  const semesterItems = {
+    all: year === 'all' ? 'Any semester' : 'Both semesters',
+    ...Object.fromEntries(inYear.map((n) => [String(n), `Semester ${n}`])),
+  };
   const statusItems = { all: 'Any status', ...Object.fromEntries(STATUSES.map((s) => [s, s])) };
   const standingItems = { all: 'Any standing', ...Object.fromEntries(STANDINGS.map((s) => [s, s])) };
 
-  const query = qs({ q: debounced, programmeId, intakeId, status, standing, semesterNumber, page, pageSize });
+  const query = qs({ q: debounced, programmeId, intakeId, status, standing, year, semesterNumber, page, pageSize });
   const { can } = useAuth();
   const students = useQuery({
     queryKey: ['students', query],
@@ -76,38 +85,54 @@ export default function StudentsPage() {
         {can('student.write') && <NewStudent />}
       </div>
 
-      <div className="grid gap-2 md:grid-cols-6">
-        <div className="relative md:col-span-2">
+      {/* A wrapping row, not a fixed grid: six controls squeezed into four columns clipped their
+          own labels ("Any standing" lost its last letters), and adding a seventh made it worse. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[16rem] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="pl-8" placeholder="Search ID, name or email" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <Select value={programmeId} onValueChange={filter(setProgrammeId, true)} items={programmeItems}>
-          <SelectTrigger className="w-full"><SelectValue placeholder="Programme" /></SelectTrigger>
+          <SelectTrigger className="w-[13rem]"><SelectValue placeholder="Programme" /></SelectTrigger>
           <SelectContent>
             {Object.entries(programmeItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={intakeId} onValueChange={filter(setIntakeId)} disabled={programmeId === 'all'} items={intakeItems}>
-          <SelectTrigger className="w-full"><SelectValue placeholder="Intake" /></SelectTrigger>
+          <SelectTrigger className="w-[10rem]"><SelectValue placeholder="Intake" /></SelectTrigger>
           <SelectContent>
             {Object.entries(intakeItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select
+          value={year}
+          onValueChange={(v) => {
+            setYear(v ?? 'all');
+            setSemesterNumber('all');
+            setPage(1);
+          }}
+          items={yearItems}
+        >
+          <SelectTrigger className="w-[13rem]"><SelectValue placeholder="Year" /></SelectTrigger>
+          <SelectContent>
+            {Object.entries(yearItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Select value={semesterNumber} onValueChange={filter(setSemesterNumber)} items={semesterItems}>
-          <SelectTrigger className="w-full"><SelectValue placeholder="Semester" /></SelectTrigger>
+          <SelectTrigger className="w-[11rem]"><SelectValue placeholder="Semester" /></SelectTrigger>
           <SelectContent>
             {Object.entries(semesterItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Select value={status} onValueChange={filter(setStatus)} items={statusItems}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="w-[10rem]"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               {Object.entries(statusItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={standing} onValueChange={filter(setStanding)} items={standingItems}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Standing" /></SelectTrigger>
+            <SelectTrigger className="w-[10rem]"><SelectValue placeholder="Standing" /></SelectTrigger>
             <SelectContent>
               {Object.entries(standingItems).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
             </SelectContent>
