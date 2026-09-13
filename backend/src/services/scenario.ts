@@ -455,6 +455,8 @@ export async function runScenario(prisma: PrismaClient): Promise<ScenarioReport>
  */
 export async function seedAttendanceHistory(prisma: PrismaClient) {
   const WEEKS = 8;
+  const hero = await prisma.student.findUnique({ where: { studentId: HERO.studentId }, select: { id: true } });
+  const heroIds = new Set([hero?.id].filter((x): x is string => !!x));
   /** Roughly one in five, chosen by position so a re-run picks the same people. */
   const isStruggling = (i: number) => i % 5 === 2;
 
@@ -472,82 +474,94 @@ export async function seedAttendanceHistory(prisma: PrismaClient) {
   let records = 0;
 
   for (const intake of intakes) {
-    // The current semester started today; the one before it is the only term with a story.
+    // The current semester started today, so every term with a story is already behind it.
     if (intake.semesters.length < 2) {
       skipped.push(`${intake.programme.code} ${intake.label} — no term before the one starting today`);
       continue;
     }
-    const term = intake.semesters[intake.semesters.length - 2];
-    const section = intake.sections[0];
-    if (!section) continue;
+    // Every term that has finished, not only the last one: a third-year opening their record
+    // should see two years of attendance behind them, the same as they see two years of results.
+    const pastTerms = intake.semesters.slice(0, -1);
+    // The first group of each cohort, plus the group the walk-through student is in, so his own
+    // history is there and his classmates' alongside it rather than his alone.
+    const sections = [...new Map(
+      [intake.sections[0], intake.sections.find((s) => s.name === HERO.group && intake.label === 'Sep 2024' && intake.programme.code === 'BSCNIS')]
+        .filter((s): s is NonNullable<typeof s> => !!s)
+        .map((s) => [s.id, s] as const),
+    ).values()];
+    if (sections.length === 0) continue;
 
-    const offerings = await prisma.moduleOffering.findMany({
-      where: { semesterId: term.id },
-      select: { id: true, lecturerId: true, module: { select: { code: true } } },
-      orderBy: { module: { code: 'asc' } },
-    });
-    if (offerings.length === 0) continue;
-
-    const students = await prisma.student.findMany({
-      where: { sectionId: section.id, deletedAt: null },
-      select: { id: true },
-      orderBy: { studentId: 'asc' },
-    });
-    if (students.length === 0) continue;
-
-    for (const [oi, offering] of offerings.entries()) {
-      const teacherId = offering.lecturerId ?? anyTeacher?.id;
-      if (!teacherId) continue;
-
-      // One weekly class per module. Past terms were never given a routine, so it is written here
-      // rather than invented per register — attendance has to point at a real class.
-      let slot = await prisma.timetableSlot.findFirst({
-        where: { semesterId: term.id, sectionId: section.id, moduleOfferingId: offering.id },
-        select: { id: true, dayOfWeek: true },
-      });
-      if (!slot) {
-        const day = [7, 1, 2, 3, 4, 5][oi % 6];
-        const hour = 9 + (oi % 4) * 2;
-        slot = await prisma.timetableSlot.create({
-          data: {
-            semesterId: term.id,
-            sectionId: section.id,
-            moduleOfferingId: offering.id,
-            teacherId,
-            kind: 'LECTURE',
-            dayOfWeek: day,
-            startTime: `${String(hour).padStart(2, '0')}:00`,
-            endTime: `${String(hour + 1).padStart(2, '0')}:30`,
-          },
-          select: { id: true, dayOfWeek: true },
+    for (const term of pastTerms) {
+      for (const section of sections) {
+        const offerings = await prisma.moduleOffering.findMany({
+          where: { semesterId: term.id },
+          select: { id: true, lecturerId: true, module: { select: { code: true } } },
+          orderBy: { module: { code: 'asc' } },
         });
-      }
+        if (offerings.length === 0) continue;
 
-      const rows: { studentId: string; slotId: string; offeringId: string; date: Date; status: 'PRESENT' | 'ABSENT'; markedById: string }[] = [];
-      for (let w = 0; w < WEEKS; w += 1) {
-        const d = new Date(term.startDate.getTime() + w * 7 * 86400e3);
-        const iso = ((d.getUTCDay() + 6) % 7) + 1;
-        d.setUTCDate(d.getUTCDate() + (slot.dayOfWeek - iso));
-        d.setUTCHours(0, 0, 0, 0);
-        for (const [si, s] of students.entries()) {
-          // Counted out rather than rolled for. Two rounds of hashing still left a student who
-          // attended nothing at all across eight weeks, because a coin flipped per week only
-          // averages out over far more weeks than a term has. Each student is given a number of
-          // classes to attend and a rotation that spreads them, so the rate is the rate: a
-          // struggling student makes two or three of eight, everybody else seven or all eight.
-          const target = isStruggling(si) ? 2 + (si % 2) : 7 + (si % 2);
-          const present = ((si * 31 + oi * 7 + w * 13) % WEEKS) < target;
-          rows.push({ studentId: s.id, slotId: slot.id, offeringId: offering.id, date: d, status: present ? 'PRESENT' : 'ABSENT', markedById: teacherId });
+        const students = await prisma.student.findMany({
+          where: { sectionId: section.id, deletedAt: null },
+          select: { id: true },
+          orderBy: { studentId: 'asc' },
+        });
+        if (students.length === 0) continue;
+
+        for (const [oi, offering] of offerings.entries()) {
+          const teacherId = offering.lecturerId ?? anyTeacher?.id;
+          if (!teacherId) continue;
+
+          // One weekly class per module. Past terms were never given a routine, so it is written here
+          // rather than invented per register — attendance has to point at a real class.
+          let slot = await prisma.timetableSlot.findFirst({
+            where: { semesterId: term.id, sectionId: section.id, moduleOfferingId: offering.id },
+            select: { id: true, dayOfWeek: true },
+          });
+          if (!slot) {
+            const day = [7, 1, 2, 3, 4, 5][oi % 6];
+            const hour = 9 + (oi % 4) * 2;
+            slot = await prisma.timetableSlot.create({
+              data: {
+                semesterId: term.id,
+                sectionId: section.id,
+                moduleOfferingId: offering.id,
+                teacherId,
+                kind: 'LECTURE',
+                dayOfWeek: day,
+                startTime: `${String(hour).padStart(2, '0')}:00`,
+                endTime: `${String(hour + 1).padStart(2, '0')}:30`,
+              },
+              select: { id: true, dayOfWeek: true },
+            });
+          }
+
+          const rows: { studentId: string; slotId: string; offeringId: string; date: Date; status: 'PRESENT' | 'ABSENT'; markedById: string }[] = [];
+          for (let w = 0; w < WEEKS; w += 1) {
+            const d = new Date(term.startDate.getTime() + w * 7 * 86400e3);
+            const iso = ((d.getUTCDay() + 6) % 7) + 1;
+            d.setUTCDate(d.getUTCDate() + (slot.dayOfWeek - iso));
+            d.setUTCHours(0, 0, 0, 0);
+            for (const [si, s] of students.entries()) {
+              // Counted out rather than rolled for. Two rounds of hashing still left a student who
+              // attended nothing at all across eight weeks, because a coin flipped per week only
+              // averages out over far more weeks than a term has. Each student is given a number of
+              // classes to attend and a rotation that spreads them, so the rate is the rate: a
+              // struggling student makes two or three of eight, everybody else seven or all eight.
+              const target = heroIds.has(s.id) ? 7 : isStruggling(si) ? 2 + (si % 2) : 7 + (si % 2);
+              const present = ((si * 31 + oi * 7 + w * 13) % WEEKS) < target;
+              rows.push({ studentId: s.id, slotId: slot.id, offeringId: offering.id, date: d, status: present ? 'PRESENT' : 'ABSENT', markedById: teacherId });
+            }
+          }
+          // Rewritten, not skipped: a re-run has to be able to correct what the last one wrote.
+          await prisma.attendanceRecord.deleteMany({ where: { slotId: slot.id } });
+          for (let i = 0; i < rows.length; i += 500) {
+            const r = await prisma.attendanceRecord.createMany({ data: rows.slice(i, i + 500), skipDuplicates: true });
+            records += r.count;
+          }
         }
-      }
-      // Rewritten, not skipped: a re-run has to be able to correct what the last one wrote.
-      await prisma.attendanceRecord.deleteMany({ where: { slotId: slot.id } });
-      for (let i = 0; i < rows.length; i += 500) {
-        const r = await prisma.attendanceRecord.createMany({ data: rows.slice(i, i + 500), skipDuplicates: true });
-        records += r.count;
+        covered.push(`${intake.programme.code} ${intake.label} · semester ${term.number} · group ${section.name} · ${offerings.length} modules · ${students.length} students`);
       }
     }
-    covered.push(`${intake.programme.code} ${intake.label} · semester ${term.number} · group ${section.name} · ${offerings.length} modules · ${students.length} students`);
   }
 
   return { records, covered, skipped };
