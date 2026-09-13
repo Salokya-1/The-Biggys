@@ -530,9 +530,13 @@ export async function seedAttendanceHistory(prisma: PrismaClient) {
         d.setUTCDate(d.getUTCDate() + (slot.dayOfWeek - iso));
         d.setUTCHours(0, 0, 0, 0);
         for (const [si, s] of students.entries()) {
-          // A struggling student turns up now and then; everybody else misses the odd week.
-          const rnd = hashUnit(si * 977 + w * 31 + oi * 7);
-          const present = isStruggling(si) ? rnd < 0.32 : rnd < 0.9;
+          // Counted out rather than rolled for. Two rounds of hashing still left a student who
+          // attended nothing at all across eight weeks, because a coin flipped per week only
+          // averages out over far more weeks than a term has. Each student is given a number of
+          // classes to attend and a rotation that spreads them, so the rate is the rate: a
+          // struggling student makes two or three of eight, everybody else seven or all eight.
+          const target = isStruggling(si) ? 2 + (si % 2) : 7 + (si % 2);
+          const present = ((si * 31 + oi * 7 + w * 13) % WEEKS) < target;
           rows.push({ studentId: s.id, slotId: slot.id, offeringId: offering.id, date: d, status: present ? 'PRESENT' : 'ABSENT', markedById: teacherId });
         }
       }
