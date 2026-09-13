@@ -62,6 +62,22 @@ const CLASSMATES = [
   'Rojan Karki', 'Sushmita Thapa',
 ];
 
+/**
+ * A well-mixed value in [0,1) from an integer.
+ *
+ * Taking the first output of a freshly seeded linear generator is not random at all: seeds that
+ * differ by a small step give outputs that differ by a small step, so a per-student, per-week
+ * "did they turn up" test came out the same way every week and the struggling students attended
+ * nothing whatsoever. This mixes properly before it is asked for a decision.
+ */
+export function hashUnit(n: number): number {
+  let x = n | 0;
+  x = Math.imul(x ^ (x >>> 16), 2246822507);
+  x = Math.imul(x ^ (x >>> 13), 3266489909);
+  x ^= x >>> 16;
+  return (x >>> 0) / 4294967296;
+}
+
 /** Deterministic pseudo-randomness: the same run gives the same marks, every time. */
 function seeded(seed: number) {
   let s = seed >>> 0;
@@ -515,11 +531,13 @@ export async function seedAttendanceHistory(prisma: PrismaClient) {
         d.setUTCHours(0, 0, 0, 0);
         for (const [si, s] of students.entries()) {
           // A struggling student turns up now and then; everybody else misses the odd week.
-          const rnd = seeded(si * 977 + w * 31 + oi * 7)();
-          const present = isStruggling(si) ? rnd < 0.3 : rnd < 0.9;
+          const rnd = hashUnit(si * 977 + w * 31 + oi * 7);
+          const present = isStruggling(si) ? rnd < 0.32 : rnd < 0.9;
           rows.push({ studentId: s.id, slotId: slot.id, offeringId: offering.id, date: d, status: present ? 'PRESENT' : 'ABSENT', markedById: teacherId });
         }
       }
+      // Rewritten, not skipped: a re-run has to be able to correct what the last one wrote.
+      await prisma.attendanceRecord.deleteMany({ where: { slotId: slot.id } });
       for (let i = 0; i < rows.length; i += 500) {
         const r = await prisma.attendanceRecord.createMany({ data: rows.slice(i, i + 500), skipDuplicates: true });
         records += r.count;
