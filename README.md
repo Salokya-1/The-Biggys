@@ -140,6 +140,7 @@ All scoping, architecture and product decisions were made by the team. All funct
 - Salokya Ghimire — [@Salokya-1](https://github.com/Salokya-1)
 - Sujal Shiwakoti - [@3-sujal](https://github.com/3-sujal)
 - Dristi Shakya - [@dristi123-beep](https://github.com/dristi123-beep)
+- Samriddha Bahadur Basnet - [@samridbasnet92-crypto](https://github.com/samridbasnet92-crypto)
 
 ## Licence
 
