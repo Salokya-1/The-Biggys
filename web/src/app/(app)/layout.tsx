@@ -38,7 +38,6 @@ const NAV: NavItem[] = [
   { href: '/marksheets', label: 'Mark sheets', icon: ClipboardCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
   { href: '/timetable', label: 'Timetable', icon: CalendarClock, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/exams', label: 'Exams', icon: CalendarDays, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'] },
-  { href: '/attendance', label: 'Attendance', icon: UserCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'attendance.read' },
   { href: '/requests', label: 'Requests', icon: Inbox, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'] },
   { href: '/queries', label: 'Queries', icon: MessageCircleQuestion, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'], needs: 'query.raise' },
   { href: '/messages', label: 'Messages', icon: MessageSquare, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER', 'STUDENT'], needs: 'message.use' },
@@ -48,6 +47,7 @@ const NAV: NavItem[] = [
   { href: '/venues', label: 'Rooms', icon: Building2, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'seating.read' },
   { href: '/retakes', label: 'Retakes', icon: Sun, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'module.read' },
 
+  { href: '/attendance', label: 'Attendance', icon: UserCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'attendance.read', section: 'Additional features' },
   { href: '/camera', label: 'Camera access', icon: Video, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'camera.read', section: 'Additional features' },
   { href: '/fees', label: 'Fees', icon: Receipt, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'fees.read', section: 'Additional features' },
   { href: '/admin/users', label: 'Users', icon: ShieldCheck, roles: ['ADMIN', 'MODULE_LEADER', 'LECTURER'], needs: 'users.manage', section: 'Additional features' },
