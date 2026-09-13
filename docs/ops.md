@@ -8,7 +8,7 @@ Fill the placeholders when the services are created (never paste secrets here).
 | Database | Render `biggys-db` (Oregon, free PostgreSQL 18) | — |
 | Web (`web/`) | Render `biggys-web` (Singapore, free), root directory `web/`, tracks `main` | https://kramiq.tech (also https://biggys-web.onrender.com) |
 | APK | GitHub Release `v1.0.0-hackathon` | `https://github.com/Salokya-1/The-Biggys/releases` |
-| Status page | UptimeRobot public page | `{{STATUS_PAGE_URL}}` |
+| Status page | Built in; each check runs in the visitor's browser | https://kramiq.tech/status |
 
 ## Domain and DNS
 
