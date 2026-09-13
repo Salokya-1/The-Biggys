@@ -74,7 +74,10 @@ export async function buildDay(date: Date, filter: DayFilter): Promise<DayItem[]
       where: {
         semesterId: { in: teachingSemesters.map((s) => s.id).filter((id) => !filter.semesterId || id === filter.semesterId) },
         dayOfWeek: dow,
-        ...(filter.sectionId ? { sectionId: filter.sectionId } : {}),
+        // A combined lecture is owned by one section and joined to the rest, so matching only the
+        // owner hides the cohort's own lectures from every group but the first — a student in N3
+        // saw their two workshops and none of the three lectures they share with N1.
+        ...(filter.sectionId ? { OR: [{ sectionId: filter.sectionId }, { groups: { some: { id: filter.sectionId } } }] } : {}),
         ...(filter.venueId ? { venueId: filter.venueId } : {}),
       },
       include: { ...slotInclude, exceptions: { where: { date } , include: { teacher: { select: { id: true, name: true } }, venue: { select: { id: true, name: true, building: true } } } } },
